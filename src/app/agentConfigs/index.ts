@@ -1,4 +1,4 @@
-import { simpleHandoffScenario } from "./simpleHandoff";
+import { simpleHandoffScenario } from "./voiceAgent";
 
 import type { RealtimeAgent } from "@openai/agents/realtime";
 

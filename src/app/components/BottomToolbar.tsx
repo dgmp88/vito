@@ -118,14 +118,14 @@ function BottomToolbar({
 
       <div className="flex flex-row items-center gap-2">
         <input
-          id="logs"
+          id="panel"
           type="checkbox"
           checked={isEventsPaneExpanded}
           onChange={(e) => setIsEventsPaneExpanded(e.target.checked)}
           className="w-4 h-4"
         />
-        <label htmlFor="logs" className="flex items-center cursor-pointer">
-          Logs
+        <label htmlFor="panel" className="flex items-center cursor-pointer">
+          Panel
         </label>
       </div>
 

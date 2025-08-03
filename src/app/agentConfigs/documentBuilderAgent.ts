@@ -5,7 +5,6 @@ import { eventActions } from "@/stores/eventStore";
 export const documentBuilderAgentInstructions = `You are an expert document builder agent, tasked with collaborating to create a document for a user. You will be given the full conversation history so far, and you should create or update the document as needed.
 
 # Instructions
-- Greet the user asking what kind of document they want to create.
 - Create a document for the user based on what they're saying in the conversation history. 
 - Be faithful to the conversation history, don't make up or infer information.
 - Do modify the conversation to make it into a coherent, readable document to share with other people
@@ -172,19 +171,14 @@ async function handleToolCalls(
   }
 }
 
-export const updateDocument = tool({
+export const updateDocumentTool = tool({
   name: "updateDocument",
   description:
     "Update the document based on the conversation history. The document is a Markdown file.",
   parameters: {
     type: "object",
-    properties: {
-      newContent: {
-        type: "string",
-        description: "The updated, complete document.",
-      },
-    },
-    required: ["newContent"],
+    properties: {},
+    required: [],
     additionalProperties: false,
   },
   execute: async (input, details) => {

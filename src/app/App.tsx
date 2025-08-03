@@ -7,7 +7,7 @@ import Image from "next/image";
 
 // UI components
 import Transcript from "./components/Transcript";
-import Events from "./components/Events";
+import TabbedPanel from "./components/TabbedPanel";
 import BottomToolbar from "./components/BottomToolbar";
 
 // Types
@@ -23,7 +23,7 @@ import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 // Agent configs
 import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
 
-import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
+import { simpleHandoffScenario } from "@/app/agentConfigs/voiceAgent";
 
 // Map used by connect logic for scenarios defined via the SDK.
 const sdkScenarioMap: Record<string, RealtimeAgent[]> = {
@@ -146,7 +146,7 @@ function App() {
         (a) => a.name === selectedAgentName,
       );
       addTranscriptBreadcrumb(`Agent: ${selectedAgentName}`, currentAgent);
-      updateSession(!handoffTriggeredRef.current);
+      updateSession(false);
       // Reset flag after handling so subsequent effects behave normally
       handoffTriggeredRef.current = false;
     }
@@ -445,7 +445,7 @@ function App() {
           canSend={sessionStatus === "CONNECTED"}
         />
 
-        <Events isExpanded={isEventsPaneExpanded} />
+        <TabbedPanel isExpanded={isEventsPaneExpanded} />
       </div>
 
       <BottomToolbar
