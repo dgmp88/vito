@@ -12,7 +12,7 @@ import BottomToolbar from "./components/BottomToolbar";
 
 // Types
 import { SessionStatus } from "@/app/types";
-import type { RealtimeAgent } from '@openai/agents/realtime';
+import type { RealtimeAgent } from "@openai/agents/realtime";
 
 // Context providers & hooks
 import { useTranscript } from "@/app/contexts/TranscriptContext";
@@ -22,17 +22,12 @@ import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 
 // Agent configs
 import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
-import { customerServiceRetailScenario } from "@/app/agentConfigs/customerServiceRetail";
-import { chatSupervisorScenario } from "@/app/agentConfigs/chatSupervisor";
-import { customerServiceRetailCompanyName } from "@/app/agentConfigs/customerServiceRetail";
-import { chatSupervisorCompanyName } from "@/app/agentConfigs/chatSupervisor";
+
 import { simpleHandoffScenario } from "@/app/agentConfigs/simpleHandoff";
 
 // Map used by connect logic for scenarios defined via the SDK.
 const sdkScenarioMap: Record<string, RealtimeAgent[]> = {
   simpleHandoff: simpleHandoffScenario,
-  customerServiceRetail: customerServiceRetailScenario,
-  chatSupervisor: chatSupervisorScenario,
 };
 
 import useAudioDownload from "./hooks/useAudioDownload";
@@ -53,13 +48,10 @@ function App() {
   // ---------------------------------------------------------------------
   const urlCodec = searchParams.get("codec") || "opus";
 
-  // Agents SDK doesn't currently support codec selection so it is now forced 
-  // via global codecPatch at module load 
+  // Agents SDK doesn't currently support codec selection so it is now forced
+  // via global codecPatch at module load
 
-  const {
-    addTranscriptMessage,
-    addTranscriptBreadcrumb,
-  } = useTranscript();
+  const { addTranscriptMessage, addTranscriptBreadcrumb } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
 
   const [selectedAgentName, setSelectedAgentName] = useState<string>("");
@@ -72,10 +64,10 @@ function App() {
   const handoffTriggeredRef = useRef(false);
 
   const sdkAudioElement = React.useMemo(() => {
-    if (typeof window === 'undefined') return undefined;
-    const el = document.createElement('audio');
+    if (typeof window === "undefined") return undefined;
+    const el = document.createElement("audio");
     el.autoplay = true;
-    el.style.display = 'none';
+    el.style.display = "none";
     document.body.appendChild(el);
     return el;
   }, []);
@@ -87,20 +79,14 @@ function App() {
     }
   }, [sdkAudioElement]);
 
-  const {
-    connect,
-    disconnect,
-    sendUserText,
-    sendEvent,
-    interrupt,
-    mute,
-  } = useRealtimeSession({
-    onConnectionChange: (s) => setSessionStatus(s as SessionStatus),
-    onAgentHandoff: (agentName: string) => {
-      handoffTriggeredRef.current = true;
-      setSelectedAgentName(agentName);
-    },
-  });
+  const { connect, disconnect, sendUserText, sendEvent, interrupt, mute } =
+    useRealtimeSession({
+      onConnectionChange: (s) => setSessionStatus(s as SessionStatus),
+      onAgentHandoff: (agentName: string) => {
+        handoffTriggeredRef.current = true;
+        setSelectedAgentName(agentName);
+      },
+    });
 
   const [sessionStatus, setSessionStatus] =
     useState<SessionStatus>("DISCONNECTED");
@@ -112,9 +98,9 @@ function App() {
   const [isPTTUserSpeaking, setIsPTTUserSpeaking] = useState<boolean>(false);
   const [isAudioPlaybackEnabled, setIsAudioPlaybackEnabled] = useState<boolean>(
     () => {
-      if (typeof window === 'undefined') return true;
-      const stored = localStorage.getItem('audioPlaybackEnabled');
-      return stored ? stored === 'true' : true;
+      if (typeof window === "undefined") return true;
+      const stored = localStorage.getItem("audioPlaybackEnabled");
+      return stored ? stored === "true" : true;
     },
   );
 
@@ -127,7 +113,7 @@ function App() {
       sendEvent(eventObj);
       logClientEvent(eventObj, eventNameSuffix);
     } catch (err) {
-      console.error('Failed to send via SDK', err);
+      console.error("Failed to send via SDK", err);
     }
   };
 
@@ -150,7 +136,6 @@ function App() {
     setSelectedAgentConfigSet(agents);
   }, [searchParams]);
 
-
   useEffect(() => {
     if (
       sessionStatus === "CONNECTED" &&
@@ -158,7 +143,7 @@ function App() {
       selectedAgentName
     ) {
       const currentAgent = selectedAgentConfigSet.find(
-        (a) => a.name === selectedAgentName
+        (a) => a.name === selectedAgentName,
       );
       addTranscriptBreadcrumb(`Agent: ${selectedAgentName}`, currentAgent);
       updateSession(!handoffTriggeredRef.current);
@@ -201,15 +186,15 @@ function App() {
 
         // Ensure the selectedAgentName is first so that it becomes the root
         const reorderedAgents = [...sdkScenarioMap[agentSetKey]];
-        const idx = reorderedAgents.findIndex((a) => a.name === selectedAgentName);
+        const idx = reorderedAgents.findIndex(
+          (a) => a.name === selectedAgentName,
+        );
         if (idx > 0) {
           const [agent] = reorderedAgents.splice(idx, 1);
           reorderedAgents.unshift(agent);
         }
 
-        const companyName = agentSetKey === 'customerServiceRetail'
-          ? customerServiceRetailCompanyName
-          : chatSupervisorCompanyName;
+        const companyName = "newTelco";
         const guardrail = createModerationGuardrail(companyName);
 
         await connect({
@@ -240,15 +225,18 @@ function App() {
     addTranscriptMessage(id, "user", text, true);
 
     sendClientEvent({
-      type: 'conversation.item.create',
+      type: "conversation.item.create",
       item: {
         id,
-        type: 'message',
-        role: 'user',
-        content: [{ type: 'input_text', text }],
+        type: "message",
+        role: "user",
+        content: [{ type: "input_text", text }],
       },
     });
-    sendClientEvent({ type: 'response.create' }, '(simulated user text message)');
+    sendClientEvent(
+      { type: "response.create" },
+      "(simulated user text message)",
+    );
   };
 
   const updateSession = (shouldTriggerResponse: boolean = false) => {
@@ -258,7 +246,7 @@ function App() {
     const turnDetection = isPTTActive
       ? null
       : {
-          type: 'server_vad',
+          type: "server_vad",
           threshold: 0.9,
           prefix_padding_ms: 300,
           silence_duration_ms: 500,
@@ -266,7 +254,7 @@ function App() {
         };
 
     sendEvent({
-      type: 'session.update',
+      type: "session.update",
       session: {
         turn_detection: turnDetection,
       },
@@ -274,10 +262,10 @@ function App() {
 
     // Send an initial 'hi' message to trigger the agent to greet the user
     if (shouldTriggerResponse) {
-      sendSimulatedUserMessage('hi');
+      sendSimulatedUserMessage("hi");
     }
     return;
-  }
+  };
 
   const handleSendTextMessage = () => {
     if (!userText.trim()) return;
@@ -286,29 +274,28 @@ function App() {
     try {
       sendUserText(userText.trim());
     } catch (err) {
-      console.error('Failed to send via SDK', err);
+      console.error("Failed to send via SDK", err);
     }
 
     setUserText("");
   };
 
   const handleTalkButtonDown = () => {
-    if (sessionStatus !== 'CONNECTED') return;
+    if (sessionStatus !== "CONNECTED") return;
     interrupt();
 
     setIsPTTUserSpeaking(true);
-    sendClientEvent({ type: 'input_audio_buffer.clear' }, 'clear PTT buffer');
+    sendClientEvent({ type: "input_audio_buffer.clear" }, "clear PTT buffer");
 
     // No placeholder; we'll rely on server transcript once ready.
   };
 
   const handleTalkButtonUp = () => {
-    if (sessionStatus !== 'CONNECTED' || !isPTTUserSpeaking)
-      return;
+    if (sessionStatus !== "CONNECTED" || !isPTTUserSpeaking) return;
 
     setIsPTTUserSpeaking(false);
-    sendClientEvent({ type: 'input_audio_buffer.commit' }, 'commit PTT');
-    sendClientEvent({ type: 'response.create' }, 'trigger response PTT');
+    sendClientEvent({ type: "input_audio_buffer.commit" }, "commit PTT");
+    sendClientEvent({ type: "response.create" }, "trigger response PTT");
   };
 
   const onToggleConnection = () => {
@@ -328,7 +315,7 @@ function App() {
   };
 
   const handleSelectedAgentChange = (
-    e: React.ChangeEvent<HTMLSelectElement>
+    e: React.ChangeEvent<HTMLSelectElement>,
   ) => {
     const newAgentName = e.target.value;
     // Reconnect session with the newly selected agent as root so that tool
@@ -355,7 +342,7 @@ function App() {
       setIsEventsPaneExpanded(storedLogsExpanded === "true");
     }
     const storedAudioPlaybackEnabled = localStorage.getItem(
-      "audioPlaybackEnabled"
+      "audioPlaybackEnabled",
     );
     if (storedAudioPlaybackEnabled) {
       setIsAudioPlaybackEnabled(storedAudioPlaybackEnabled === "true");
@@ -373,7 +360,7 @@ function App() {
   useEffect(() => {
     localStorage.setItem(
       "audioPlaybackEnabled",
-      isAudioPlaybackEnabled.toString()
+      isAudioPlaybackEnabled.toString(),
     );
   }, [isAudioPlaybackEnabled]);
 
@@ -392,22 +379,22 @@ function App() {
     }
 
     // Toggle server-side audio stream mute so bandwidth is saved when the
-    // user disables playback. 
+    // user disables playback.
     try {
       mute(!isAudioPlaybackEnabled);
     } catch (err) {
-      console.warn('Failed to toggle SDK mute', err);
+      console.warn("Failed to toggle SDK mute", err);
     }
   }, [isAudioPlaybackEnabled]);
 
   // Ensure mute state is propagated to transport right after we connect or
   // whenever the SDK client reference becomes available.
   useEffect(() => {
-    if (sessionStatus === 'CONNECTED') {
+    if (sessionStatus === "CONNECTED") {
       try {
         mute(!isAudioPlaybackEnabled);
       } catch (err) {
-        console.warn('mute sync after connect failed', err);
+        console.warn("mute sync after connect failed", err);
       }
     }
   }, [sessionStatus, isAudioPlaybackEnabled]);
@@ -447,67 +434,6 @@ function App() {
             Realtime API <span className="text-gray-500">Agents</span>
           </div>
         </div>
-        <div className="flex items-center">
-          <label className="flex items-center text-base gap-1 mr-2 font-medium">
-            Scenario
-          </label>
-          <div className="relative inline-block">
-            <select
-              value={agentSetKey}
-              onChange={handleAgentChange}
-              className="appearance-none border border-gray-300 rounded-lg text-base px-2 py-1 pr-8 cursor-pointer font-normal focus:outline-none"
-            >
-              {Object.keys(allAgentSets).map((agentKey) => (
-                <option key={agentKey} value={agentKey}>
-                  {agentKey}
-                </option>
-              ))}
-            </select>
-            <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-gray-600">
-              <svg className="h-4 w-4" viewBox="0 0 20 20" fill="currentColor">
-                <path
-                  fillRule="evenodd"
-                  d="M5.23 7.21a.75.75 0 011.06.02L10 10.44l3.71-3.21a.75.75 0 111.04 1.08l-4.25 3.65a.75.75 0 01-1.04 0L5.21 8.27a.75.75 0 01.02-1.06z"
-                  clipRule="evenodd"
-                />
-              </svg>
-            </div>
-          </div>
-
-          {agentSetKey && (
-            <div className="flex items-center ml-6">
-              <label className="flex items-center text-base gap-1 mr-2 font-medium">
-                Agent
-              </label>
-              <div className="relative inline-block">
-                <select
-                  value={selectedAgentName}
-                  onChange={handleSelectedAgentChange}
-                  className="appearance-none border border-gray-300 rounded-lg text-base px-2 py-1 pr-8 cursor-pointer font-normal focus:outline-none"
-                >
-                  {selectedAgentConfigSet?.map((agent) => (
-                    <option key={agent.name} value={agent.name}>
-                      {agent.name}
-                    </option>
-                  ))}
-                </select>
-                <div className="pointer-events-none absolute inset-y-0 right-0 flex items-center pr-2 text-gray-600">
-                  <svg
-                    className="h-4 w-4"
-                    viewBox="0 0 20 20"
-                    fill="currentColor"
-                  >
-                    <path
-                      fillRule="evenodd"
-                      d="M5.23 7.21a.75.75 0 011.06.02L10 10.44l3.71-3.21a.75.75 0 111.04 1.08l-4.25 3.65a.75.75 0 01-1.04 0L5.21 8.27a.75.75 0 01.02-1.06z"
-                      clipRule="evenodd"
-                    />
-                  </svg>
-                </div>
-              </div>
-            </div>
-          )}
-        </div>
       </div>
 
       <div className="flex flex-1 gap-2 px-2 overflow-hidden relative">
@@ -516,9 +442,7 @@ function App() {
           setUserText={setUserText}
           onSendMessage={handleSendTextMessage}
           downloadRecording={downloadRecording}
-          canSend={
-            sessionStatus === "CONNECTED"
-          }
+          canSend={sessionStatus === "CONNECTED"}
         />
 
         <Events isExpanded={isEventsPaneExpanded} />

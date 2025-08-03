@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 
 export async function GET() {
   try {
+    console.log("CREATING SESSION");
     const response = await fetch(
       "https://api.openai.com/v1/realtime/sessions",
       {
@@ -11,9 +12,10 @@ export async function GET() {
           "Content-Type": "application/json",
         },
         body: JSON.stringify({
-          model: "gpt-4o-realtime-preview-2025-06-03",
+          // model: "gpt-4o-realtime-preview-2025-06-03",
+          model: "gpt-4o-mini-realtime-preview-2024-12-17",
         }),
-      }
+      },
     );
     const data = await response.json();
     return NextResponse.json(data);
@@ -21,7 +23,7 @@ export async function GET() {
     console.error("Error in /session:", error);
     return NextResponse.json(
       { error: "Internal Server Error" },
-      { status: 500 }
+      { status: 500 },
     );
   }
 }
