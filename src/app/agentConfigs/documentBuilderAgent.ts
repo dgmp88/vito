@@ -18,7 +18,6 @@ export const documentBuilderAgentInstructions = `You are an expert document buil
 
 export const documentUpdaterTools = [
   tool({
-    type: "function",
     name: "updateDocument",
     description:
       "Update the document based on the conversation history. The document is a Markdown file. Regenerate the document from scratch every time.",
@@ -40,7 +39,8 @@ export const documentUpdaterTools = [
         { type: "updateDocument", input },
         "tool call",
       );
-      documentActions.updateDocument(input.newContent);
+      documentActions.updateDocument((input as any).newContent);
+      return { status: "success" };
     },
   }),
   //   {

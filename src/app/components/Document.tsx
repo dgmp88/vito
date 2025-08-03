@@ -3,6 +3,7 @@
 import React from "react";
 import { useDocumentStore } from "@/stores/documentStore";
 import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 
 export interface DocumentProps {
   isExpanded: boolean;
@@ -20,7 +21,11 @@ function Document({ isExpanded }: DocumentProps) {
       {isExpanded && (
         <div className="px-6 py-4 h-full overflow-auto">
           <div className="prose prose-sm max-w-none">
-            <ReactMarkdown>{document || DEFAULT_TEXT}</ReactMarkdown>
+            <ReactMarkdown
+              remarkPlugins={[[remarkGfm, { singleTilde: false }]]}
+            >
+              {document || DEFAULT_TEXT}
+            </ReactMarkdown>
           </div>
         </div>
       )}
