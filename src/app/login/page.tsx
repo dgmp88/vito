@@ -1,34 +1,35 @@
 "use client";
 
-import { useState } from 'react';
-import { useRouter } from 'next/navigation';
+import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 export default function Login() {
-  const [password, setPassword] = useState('');
-  const [error, setError] = useState('');
+  const [password, setPassword] = useState("");
+  const [error, setError] = useState("");
   const [loading, setLoading] = useState(false);
   const router = useRouter();
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
-    setError('');
+    setError("");
 
     try {
-      const response = await fetch('/api/auth', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+      const response = await fetch("/api/auth", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ password }),
       });
 
       if (response.ok) {
-        router.push('/');
+        router.push("/");
         router.refresh();
       } else {
-        setError('Invalid password');
+        setError("Invalid password");
       }
     } catch (err) {
-      setError('Login failed');
+      console.error("Login error", err);
+      setError("Login failed");
     } finally {
       setLoading(false);
     }
@@ -41,7 +42,7 @@ export default function Login() {
           <h1 className="text-2xl font-bold text-gray-900">Vito</h1>
           <p className="text-gray-600 mt-2">Enter password to continue</p>
         </div>
-        
+
         <form onSubmit={handleSubmit}>
           <div className="mb-4">
             <input
@@ -54,17 +55,15 @@ export default function Login() {
               disabled={loading}
             />
           </div>
-          
-          {error && (
-            <div className="mb-4 text-red-600 text-sm">{error}</div>
-          )}
-          
+
+          {error && <div className="mb-4 text-red-600 text-sm">{error}</div>}
+
           <button
             type="submit"
             disabled={loading}
             className="w-full bg-black text-white py-2 px-4 rounded-md hover:bg-gray-800 disabled:opacity-50"
           >
-            {loading ? 'Signing in...' : 'Sign In'}
+            {loading ? "Signing in..." : "Sign In"}
           </button>
         </form>
       </div>
