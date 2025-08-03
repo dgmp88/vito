@@ -23,14 +23,6 @@ function TabbedPanel({ isExpanded }: TabbedPanelProps) {
           <div className="flex items-center justify-between px-6 py-3.5 sticky top-0 z-10 text-base border-b bg-white rounded-t-xl">
             <div className="flex space-x-4">
               <button
-                onClick={() => setActiveTab("logs")}
-                className={`font-semibold ${
-                  activeTab === "logs" ? "text-blue-600" : "text-gray-500"
-                }`}
-              >
-                Logs
-              </button>
-              <button
                 onClick={() => setActiveTab("document")}
                 className={`font-semibold ${
                   activeTab === "document" ? "text-blue-600" : "text-gray-500"
@@ -38,12 +30,20 @@ function TabbedPanel({ isExpanded }: TabbedPanelProps) {
               >
                 Document
               </button>
+              <button
+                onClick={() => setActiveTab("logs")}
+                className={`font-semibold ${
+                  activeTab === "logs" ? "text-blue-600" : "text-gray-500"
+                }`}
+              >
+                Logs
+              </button>
             </div>
           </div>
-          
+
           <div className="h-full overflow-auto">
-            {activeTab === "logs" && <Events isExpanded={true} />}
             {activeTab === "document" && <Document isExpanded={true} />}
+            {activeTab === "logs" && <Events isExpanded={true} />}
           </div>
         </div>
       )}

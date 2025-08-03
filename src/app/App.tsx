@@ -21,14 +21,7 @@ import { useRealtimeSession } from "./hooks/useRealtimeSession";
 import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 
 // Agent configs
-import { allAgentSets, defaultAgentSetKey } from "@/app/agentConfigs";
-
-import { simpleHandoffScenario } from "@/app/agentConfigs/voiceAgent";
-
-// Map used by connect logic for scenarios defined via the SDK.
-const sdkScenarioMap: Record<string, RealtimeAgent[]> = {
-  simpleHandoff: simpleHandoffScenario,
-};
+import { voiceAgent } from "@/app/agentConfigs/voiceAgent";
 
 import useAudioDownload from "./hooks/useAudioDownload";
 import { useHandleSessionHistory } from "./hooks/useHandleSessionHistory";
@@ -54,14 +47,8 @@ function App() {
   const { addTranscriptMessage, addTranscriptBreadcrumb } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
 
-  const [selectedAgentName, setSelectedAgentName] = useState<string>("");
-  const [selectedAgentConfigSet, setSelectedAgentConfigSet] = useState<
-    RealtimeAgent[] | null
-  >(null);
 
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
-  // Ref to identify whether the latest agent switch came from an automatic handoff
-  const handoffTriggeredRef = useRef(false);
 
   const sdkAudioElement = React.useMemo(() => {
     if (typeof window === "undefined") return undefined;
@@ -82,10 +69,6 @@ function App() {
   const { connect, disconnect, sendUserText, sendEvent, interrupt, mute } =
     useRealtimeSession({
       onConnectionChange: (s) => setSessionStatus(s as SessionStatus),
-      onAgentHandoff: (agentName: string) => {
-        handoffTriggeredRef.current = true;
-        setSelectedAgentName(agentName);
-      },
     });
 
   const [sessionStatus, setSessionStatus] =
@@ -120,39 +103,6 @@ function App() {
   useHandleSessionHistory();
 
   useEffect(() => {
-    let finalAgentConfig = searchParams.get("agentConfig");
-    if (!finalAgentConfig || !allAgentSets[finalAgentConfig]) {
-      finalAgentConfig = defaultAgentSetKey;
-      const url = new URL(window.location.toString());
-      url.searchParams.set("agentConfig", finalAgentConfig);
-      window.location.replace(url.toString());
-      return;
-    }
-
-    const agents = allAgentSets[finalAgentConfig];
-    const agentKeyToUse = agents[0]?.name || "";
-
-    setSelectedAgentName(agentKeyToUse);
-    setSelectedAgentConfigSet(agents);
-  }, [searchParams]);
-
-  useEffect(() => {
-    if (
-      sessionStatus === "CONNECTED" &&
-      selectedAgentConfigSet &&
-      selectedAgentName
-    ) {
-      const currentAgent = selectedAgentConfigSet.find(
-        (a) => a.name === selectedAgentName,
-      );
-      addTranscriptBreadcrumb(`Agent: ${selectedAgentName}`, currentAgent);
-      updateSession(!handoffTriggeredRef.current);
-      // Reset flag after handling so subsequent effects behave normally
-      handoffTriggeredRef.current = false;
-    }
-  }, [selectedAgentConfigSet, selectedAgentName, sessionStatus]);
-
-  useEffect(() => {
     if (sessionStatus === "CONNECTED") {
       updateSession();
     }
@@ -175,42 +125,28 @@ function App() {
   };
 
   const connectToRealtime = async () => {
-    const agentSetKey = searchParams.get("agentConfig") || "default";
-    if (sdkScenarioMap[agentSetKey]) {
-      if (sessionStatus !== "DISCONNECTED") return;
-      setSessionStatus("CONNECTING");
+    if (sessionStatus !== "DISCONNECTED") return;
+    setSessionStatus("CONNECTING");
 
-      try {
-        const EPHEMERAL_KEY = await fetchEphemeralKey();
-        if (!EPHEMERAL_KEY) return;
+    try {
+      const EPHEMERAL_KEY = await fetchEphemeralKey();
+      if (!EPHEMERAL_KEY) return;
 
-        // Ensure the selectedAgentName is first so that it becomes the root
-        const reorderedAgents = [...sdkScenarioMap[agentSetKey]];
-        const idx = reorderedAgents.findIndex(
-          (a) => a.name === selectedAgentName,
-        );
-        if (idx > 0) {
-          const [agent] = reorderedAgents.splice(idx, 1);
-          reorderedAgents.unshift(agent);
-        }
+      const companyName = "newTelco";
+      const guardrail = createModerationGuardrail(companyName);
 
-        const companyName = "newTelco";
-        const guardrail = createModerationGuardrail(companyName);
-
-        await connect({
-          getEphemeralKey: async () => EPHEMERAL_KEY,
-          initialAgents: reorderedAgents,
-          audioElement: sdkAudioElement,
-          outputGuardrails: [guardrail],
-          extraContext: {
-            addTranscriptBreadcrumb,
-          },
-        });
-      } catch (err) {
-        console.error("Error connecting via SDK:", err);
-        setSessionStatus("DISCONNECTED");
-      }
-      return;
+      await connect({
+        getEphemeralKey: async () => EPHEMERAL_KEY,
+        initialAgents: [voiceAgent],
+        audioElement: sdkAudioElement,
+        outputGuardrails: [guardrail],
+        extraContext: {
+          addTranscriptBreadcrumb,
+        },
+      });
+    } catch (err) {
+      console.error("Error connecting via SDK:", err);
+      setSessionStatus("DISCONNECTED");
     }
   };
 
@@ -307,23 +243,6 @@ function App() {
     }
   };
 
-  const handleAgentChange = (e: React.ChangeEvent<HTMLSelectElement>) => {
-    const newAgentConfig = e.target.value;
-    const url = new URL(window.location.toString());
-    url.searchParams.set("agentConfig", newAgentConfig);
-    window.location.replace(url.toString());
-  };
-
-  const handleSelectedAgentChange = (
-    e: React.ChangeEvent<HTMLSelectElement>,
-  ) => {
-    const newAgentName = e.target.value;
-    // Reconnect session with the newly selected agent as root so that tool
-    // execution works correctly.
-    disconnectFromRealtime();
-    setSelectedAgentName(newAgentName);
-    // connectToRealtime will be triggered by effect watching selectedAgentName
-  };
 
   // Because we need a new connection, refresh the page when codec changes
   const handleCodecChange = (newCodec: string) => {
@@ -411,8 +330,6 @@ function App() {
       stopRecording();
     };
   }, [sessionStatus]);
-
-  const agentSetKey = searchParams.get("agentConfig") || "default";
 
   return (
     <div className="text-base flex flex-col h-screen bg-gray-100 text-gray-800 relative">
