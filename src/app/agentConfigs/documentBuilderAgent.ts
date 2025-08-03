@@ -1,21 +1,40 @@
 import { RealtimeItem, tool } from "@openai/agents/realtime";
 import { documentActions } from "@/stores/documentStore";
+import { eventActions } from "@/stores/eventStore";
 
 export const documentBuilderAgentInstructions = `You are an expert document builder agent, tasked with collaborating to create a document for a user. You will be given the full conversation history so far, and you should create or update the document as needed.
 
 # Instructions
+- Greet the user asking what kind of document they want to create.
 - Create a document for the user based on what they're saying in the conversation history. 
 - Be faithful to the conversation history, don't make up or infer information.
 - Do modify the conversation to make it into a coherent, readable document to share with other people
 - Use Markdown formatting as the main output.
+- Do not include the transcript in the document, only the document content.
+
+
+# Current Document:
+{{currentDocument}}
   `;
 
-export const supervisorAgentTools = [
+export const documentUpdaterTools = [
   {
     type: "function",
     name: "updateDocument",
     description:
       "Update the document based on the conversation history. The document is a Markdown file. Regenerate the document from scratch every time.",
+    parameters: {
+      type: "object",
+      properties: {
+        newContent: {
+          type: "string",
+          description:
+            "The updated, complete document content in Markdown format.",
+        },
+      },
+      required: ["newContent"],
+      additionalProperties: false,
+    },
   },
   //   {
   //     type: "function",
@@ -60,6 +79,10 @@ function getToolResponse(fName: string, args: any) {
   switch (fName) {
     case "updateDocument":
       console.log("updateDocument", args);
+      eventActions.logServerEvent(
+        { type: "updateDocument", args },
+        "tool call",
+      );
       documentActions.updateDocument(args.newContent);
 
       return "Document updated";
@@ -176,23 +199,32 @@ export const updateDocument = tool({
     const history: RealtimeItem[] = (details?.context as any)?.history ?? [];
     const filteredLogs = history.filter((log) => log.type === "message");
 
-    const body: any = {
-      model: "gpt-4.1",
-      input: [
-        {
-          type: "message",
-          role: "system",
-          content: documentBuilderAgentInstructions,
-        },
-        {
-          type: "message",
-          role: "user",
-          content: `==== Conversation History ====
+    const systemContent = documentBuilderAgentInstructions.replace(
+      "{{currentDocument}}",
+      documentActions.getDocument(),
+    );
+
+    const inputMessages = [
+      {
+        type: "message",
+        role: "system",
+        content: systemContent,
+      },
+      {
+        type: "message",
+        role: "user",
+        content: `==== Conversation History ====
           ${JSON.stringify(filteredLogs, null, 2)}
           `,
-        },
-      ],
-      tools: supervisorAgentTools,
+      },
+    ];
+
+    console.log("input", input);
+
+    const body: any = {
+      model: "gpt-4.1",
+      input: inputMessages,
+      tools: documentUpdaterTools,
     };
 
     const response = await fetchResponsesMessage(body);
