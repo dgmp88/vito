@@ -17,7 +17,7 @@ export const documentBuilderAgentInstructions = `You are an expert document buil
   `;
 
 export const documentUpdaterTools = [
-  {
+  tool({
     type: "function",
     name: "updateDocument",
     description:
@@ -34,7 +34,15 @@ export const documentUpdaterTools = [
       required: ["newContent"],
       additionalProperties: false,
     },
-  },
+    execute: async (input) => {
+      console.log("updateDocument", input);
+      eventActions.logServerEvent(
+        { type: "updateDocument", input },
+        "tool call",
+      );
+      documentActions.updateDocument(input.newContent);
+    },
+  }),
   //   {
   //     type: "function",
   //     name: "getUserAccountInfo",
@@ -171,21 +179,23 @@ async function handleToolCalls(
   }
 }
 
-export const updateDocumentTool = tool({
+export const updateDocumentAgent = tool({
   name: "updateDocument",
   description:
     "Update the document based on the conversation history. The document is a Markdown file.",
   parameters: {
     type: "object",
-    properties: {},
-    required: [],
+    properties: {
+      newContent: {
+        type: "string",
+        description:
+          "The updated, complete document content in Markdown format.",
+      },
+    },
+    required: ["newContent"],
     additionalProperties: false,
   },
   execute: async (input, details) => {
-    // const { relevantContextFromLastUserMessage } = input as {
-    //   relevantContextFromLastUserMessage: string;
-    // };
-
     const addBreadcrumb = (details?.context as any)?.addTranscriptBreadcrumb as
       | ((title: string, data?: any) => void)
       | undefined;

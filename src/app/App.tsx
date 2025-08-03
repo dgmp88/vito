@@ -146,7 +146,7 @@ function App() {
         (a) => a.name === selectedAgentName,
       );
       addTranscriptBreadcrumb(`Agent: ${selectedAgentName}`, currentAgent);
-      updateSession(false);
+      updateSession(!handoffTriggeredRef.current);
       // Reset flag after handling so subsequent effects behave normally
       handoffTriggeredRef.current = false;
     }
