@@ -1,67 +1,14 @@
-import { RealtimeItem, tool } from "@openai/agents/realtime";
+/*
+
+Very similar to updateDocumentTool, but uses a smarter sub-agent 
+
+*/
+
 import { documentActions } from "@/stores/documentStore";
 import { eventActions } from "@/stores/eventStore";
-
-export const documentBuilderAgentInstructions = `You are an expert document builder agent, tasked with collaborating to create a document for a user. You will be given the full conversation history so far, and you should create or update the document as needed.
-
-# Instructions
-- Create a document for the user based on what they're saying in the conversation history. 
-- Be faithful to the conversation history, don't make up or infer information.
-- Do modify the conversation to make it into a coherent, readable document to share with other people
-- Use Markdown formatting as the main output.
-- Do not include the transcript in the document, only the document content.
-
-
-# Current Document:
-{{currentDocument}}
-  `;
-
-export const documentUpdaterTools = [
-  tool({
-    name: "updateDocument",
-    description:
-      "Update the document based on the conversation history. The document is a Markdown file. Regenerate the document from scratch every time.",
-    parameters: {
-      type: "object",
-      properties: {
-        newContent: {
-          type: "string",
-          description:
-            "The updated, complete document content in Markdown format.",
-        },
-      },
-      required: ["newContent"],
-      additionalProperties: false,
-    },
-    execute: async (input) => {
-      console.log("updateDocument", input);
-      eventActions.logServerEvent(
-        { type: "updateDocument", input },
-        "tool call",
-      );
-      documentActions.updateDocument((input as any).newContent);
-      return { status: "success" };
-    },
-  }),
-  //   {
-  //     type: "function",
-  //     name: "getUserAccountInfo",
-  //     description:
-  //       "Tool to get user account information. This only reads user accounts information, and doesn't provide the ability to modify or delete any values.",
-  //     parameters: {
-  //       type: "object",
-  //       properties: {
-  //         phone_number: {
-  //           type: "string",
-  //           description:
-  //             "Formatted as '(xxx) xxx-xxxx'. MUST be provided by the user, never a null or empty string.",
-  //         },
-  //       },
-  //       required: ["phone_number"],
-  //       additionalProperties: false,
-  //     },
-  //   },
-];
+import { tool } from "@openai/agents";
+import { RealtimeItem } from "@openai/agents/realtime";
+import { updateDocumentTool } from "./updateDocument";
 
 async function fetchResponsesMessage(body: any) {
   const response = await fetch("/api/responses", {
@@ -179,6 +126,20 @@ async function handleToolCalls(
   }
 }
 
+const documentBuilderAgentInstructions = `You are an expert document builder agent, tasked with collaborating to create a document for a user. You will be given the full conversation history so far, and you should create or update the document as needed.
+
+# Instructions
+- Create a document for the user based on what they're saying in the conversation history. 
+- Be faithful to the conversation history, don't make up or infer information.
+- Do modify the conversation to make it into a coherent, readable document to share with other people
+- Use Markdown formatting as the main output.
+- Do not include the transcript in the document, only the document content.
+
+
+# Current Document:
+{{currentDocument}}
+  `;
+
 export const updateDocumentAgent = tool({
   name: "updateDocument",
   description:
@@ -228,7 +189,7 @@ export const updateDocumentAgent = tool({
     const body: any = {
       model: "gpt-4.1",
       input: inputMessages,
-      tools: documentUpdaterTools,
+      tools: [updateDocumentTool],
     };
 
     const response = await fetchResponsesMessage(body);

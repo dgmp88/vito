@@ -16,7 +16,6 @@ import { SessionStatus } from "@/app/types";
 import { useTranscript } from "@/app/contexts/TranscriptContext";
 import { useEvent } from "@/app/contexts/EventContext";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
-import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 
 // Agent configs
 import { voiceAgent } from "@/app/agentConfigs/voiceAgent";
@@ -110,7 +109,6 @@ function App() {
         getEphemeralKey: async () => EPHEMERAL_KEY,
         initialAgents: [voiceAgent],
         audioElement: sdkAudioElement,
-        outputGuardrails: [guardrail],
         extraContext: {
           addTranscriptBreadcrumb,
         },

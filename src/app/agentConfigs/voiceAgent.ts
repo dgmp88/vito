@@ -1,8 +1,7 @@
 import { RealtimeAgent } from "@openai/agents/realtime";
-import {
-  documentUpdaterTools,
-  updateDocumentAgent,
-} from "./documentBuilderAgent";
+import { updateDocumentTool } from "./tools/updateDocument";
+import { updateDocumentAgent } from "./tools/updateDocumentAgent";
+import { webSearchTool } from "./tools/webSearch";
 
 // Indirect editor
 export const voiceAgentIndirect = new RealtimeAgent({
@@ -28,9 +27,7 @@ export const voiceAgentDirect = new RealtimeAgent({
 - Respond *only* with very short responses like "OK", "Yes", "Done", "Sure", "Got it", "yep", "uh-huh" etc. Vary your responses but keep them very short.
 
 `,
-  tools: documentUpdaterTools,
+  tools: [updateDocumentTool, webSearchTool],
 });
 
 export const voiceAgent = voiceAgentDirect;
-
-export const simpleHandoffScenario = [voiceAgent];
