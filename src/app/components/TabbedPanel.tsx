@@ -2,7 +2,9 @@
 
 import React, { useState } from "react";
 import Events from "./Events";
-import Document from "./Document";
+import Document, { DEFAULT_TEXT } from "./Document";
+import { ClipboardCopyIcon } from "@radix-ui/react-icons";
+import { useDocumentStore } from "@/stores/documentStore";
 
 export interface TabbedPanelProps {
   isExpanded: boolean;
@@ -10,6 +12,18 @@ export interface TabbedPanelProps {
 
 function TabbedPanel({ isExpanded }: TabbedPanelProps) {
   const [activeTab, setActiveTab] = useState<"logs" | "document">("document");
+  const documentText = useDocumentStore((state) => state.document);
+  const [justCopied, setJustCopied] = useState(false);
+
+  const handleCopyDocument = async () => {
+    try {
+      await navigator.clipboard.writeText(documentText || DEFAULT_TEXT);
+      setJustCopied(true);
+      setTimeout(() => setJustCopied(false), 1500);
+    } catch (error) {
+      console.error("Failed to copy document:", error);
+    }
+  };
 
   return (
     <div
@@ -39,6 +53,15 @@ function TabbedPanel({ isExpanded }: TabbedPanelProps) {
                 Logs
               </button>
             </div>
+            {activeTab === "document" && (
+              <button
+                onClick={handleCopyDocument}
+                className="w-24 text-sm px-3 py-1 rounded-md bg-gray-200 hover:bg-gray-300 flex items-center justify-center gap-x-1"
+              >
+                <ClipboardCopyIcon />
+                {justCopied ? "Copied!" : "Copy"}
+              </button>
+            )}
           </div>
 
           <div className="h-full overflow-auto">
