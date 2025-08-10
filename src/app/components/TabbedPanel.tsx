@@ -6,16 +6,20 @@ import Document from "./Document";
 
 export interface TabbedPanelProps {
   isExpanded: boolean;
+  className?: string;
 }
 
-function TabbedPanel({ isExpanded }: TabbedPanelProps) {
+function TabbedPanel({ isExpanded, className = "" }: TabbedPanelProps) {
   const [activeTab, setActiveTab] = useState<"logs" | "document">("document");
 
   return (
     <div
       className={
-        (isExpanded ? "w-1/2 overflow-auto" : "w-0 overflow-hidden opacity-0") +
-        " transition-all rounded-xl duration-200 ease-in-out flex-col bg-white"
+        (isExpanded
+          ? "w-full md:w-1/2 overflow-auto"
+          : "w-0 overflow-hidden opacity-0") +
+        " transition-all rounded-xl duration-200 ease-in-out flex-col bg-white " +
+        className
       }
     >
       {isExpanded && (
