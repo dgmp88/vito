@@ -12,17 +12,24 @@ export function writeString(view: DataView, offset: number, str: string) {
 /**
  * Converts a Float32Array to 16-bit PCM in a DataView.
  */
-export function floatTo16BitPCM(output: DataView, offset: number, input: Float32Array) {
+export function floatTo16BitPCM(
+  output: DataView,
+  offset: number,
+  input: Float32Array,
+) {
   for (let i = 0; i < input.length; i++, offset += 2) {
     const s = Math.max(-1, Math.min(1, input[i]));
-    output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7FFF, true);
+    output.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
   }
 }
 
 /**
  * Encodes a Float32Array as a WAV file.
  */
-export function encodeWAV(samples: Float32Array, sampleRate: number): ArrayBuffer {
+export function encodeWAV(
+  samples: Float32Array,
+  sampleRate: number,
+): ArrayBuffer {
   const buffer = new ArrayBuffer(44 + samples.length * 2);
   const view = new DataView(buffer);
 
@@ -81,4 +88,4 @@ export async function convertWebMBlobToWav(blob: Blob): Promise<Blob> {
   }
   const wavBuffer = encodeWAV(combined, audioBuffer.sampleRate);
   return new Blob([wavBuffer], { type: "audio/wav" });
-} 
+}

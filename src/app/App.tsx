@@ -1,5 +1,5 @@
 "use client";
-import React, { useEffect, useRef, useState } from "react";
+import React, { useCallback, useEffect, useRef, useState } from "react";
 import { v4 as uuidv4 } from "uuid";
 
 import Image from "next/image";
@@ -16,7 +16,6 @@ import { SessionStatus } from "@/app/types";
 import { useTranscript } from "@/app/contexts/TranscriptContext";
 import { useEvent } from "@/app/contexts/EventContext";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
-import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
 
 // Agent configs
 import { voiceAgent } from "@/app/agentConfigs/voiceAgent";
@@ -55,11 +54,7 @@ function App() {
     useState<SessionStatus>("DISCONNECTED");
 
   const [userText, setUserText] = useState<string>("");
-  const [isPTTActive, setIsPTTActive] = useState<boolean>(false);
-  const [isPTTUserSpeaking, setIsPTTUserSpeaking] = useState<boolean>(false);
-  const [mainTab, setMainTab] =
-    useState<"transcript" | "panel">("transcript");
-
+  const [mainTab, setMainTab] = useState<"transcript" | "panel">("transcript");
   // Initialize the recording hook.
   const { startRecording, stopRecording, downloadRecording } =
     useAudioDownload();
@@ -74,12 +69,6 @@ function App() {
   };
 
   useHandleSessionHistory();
-
-  useEffect(() => {
-    if (sessionStatus === "CONNECTED") {
-      updateSession();
-    }
-  }, [isPTTActive]);
 
   const fetchEphemeralKey = async (): Promise<string | null> => {
     logClientEvent({ url: "/session" }, "fetch_session_token_request");
@@ -112,7 +101,6 @@ function App() {
         getEphemeralKey: async () => EPHEMERAL_KEY,
         initialAgents: [voiceAgent],
         audioElement: sdkAudioElement,
-        outputGuardrails: [guardrail],
         extraContext: {
           addTranscriptBreadcrumb,
         },
@@ -126,7 +114,6 @@ function App() {
   const disconnectFromRealtime = () => {
     disconnect();
     setSessionStatus("DISCONNECTED");
-    setIsPTTUserSpeaking(false);
   };
 
   const sendSimulatedUserMessage = (text: string) => {
@@ -148,33 +135,36 @@ function App() {
     );
   };
 
-  const updateSession = (shouldTriggerResponse: boolean = false) => {
-    // Reflect Push-to-Talk UI state by (de)activating server VAD on the
-    // backend. The Realtime SDK supports live session updates via the
-    // `session.update` event.
-    const turnDetection = isPTTActive
-      ? null
-      : {
-          type: "server_vad",
-          threshold: 0.9,
-          prefix_padding_ms: 300,
-          silence_duration_ms: 500,
-          create_response: true,
-        };
+  const updateSession = useCallback(
+    (shouldTriggerResponse: boolean = false) => {
+      const turnDetection = {
+        type: "server_vad",
+        threshold: 0.9,
+        prefix_padding_ms: 300,
+        silence_duration_ms: 500,
+        create_response: true,
+      };
 
-    sendEvent({
-      type: "session.update",
-      session: {
-        turn_detection: turnDetection,
-      },
-    });
+      sendEvent({
+        type: "session.update",
+        session: {
+          turn_detection: turnDetection,
+        },
+      });
 
-    // Send an initial 'hi' message to trigger the agent to greet the user
-    if (shouldTriggerResponse) {
-      sendSimulatedUserMessage("hi");
+      if (shouldTriggerResponse) {
+        sendSimulatedUserMessage("hi");
+      }
+      return;
+    },
+    [sendEvent, sendSimulatedUserMessage],
+  );
+
+  useEffect(() => {
+    if (sessionStatus === "CONNECTED") {
+      updateSession();
     }
-    return;
-  };
+  }, [sessionStatus, updateSession]);
 
   const handleSendTextMessage = () => {
     if (!userText.trim()) return;
@@ -189,24 +179,6 @@ function App() {
     setUserText("");
   };
 
-  const handleTalkButtonDown = () => {
-    if (sessionStatus !== "CONNECTED") return;
-    interrupt();
-
-    setIsPTTUserSpeaking(true);
-    sendClientEvent({ type: "input_audio_buffer.clear" }, "clear PTT buffer");
-
-    // No placeholder; we'll rely on server transcript once ready.
-  };
-
-  const handleTalkButtonUp = () => {
-    if (sessionStatus !== "CONNECTED" || !isPTTUserSpeaking) return;
-
-    setIsPTTUserSpeaking(false);
-    sendClientEvent({ type: "input_audio_buffer.commit" }, "commit PTT");
-    sendClientEvent({ type: "response.create" }, "trigger response PTT");
-  };
-
   const onToggleConnection = () => {
     if (sessionStatus === "CONNECTED" || sessionStatus === "CONNECTING") {
       disconnectFromRealtime();
@@ -215,17 +187,6 @@ function App() {
       connectToRealtime();
     }
   };
-
-  useEffect(() => {
-    const storedPushToTalkUI = localStorage.getItem("pushToTalkUI");
-    if (storedPushToTalkUI) {
-      setIsPTTActive(storedPushToTalkUI === "true");
-    }
-  }, []);
-
-  useEffect(() => {
-    localStorage.setItem("pushToTalkUI", isPTTActive.toString());
-  }, [isPTTActive]);
 
   useEffect(() => {
     if (sessionStatus === "CONNECTED" && audioElementRef.current?.srcObject) {
@@ -308,11 +269,6 @@ function App() {
       <BottomToolbar
         sessionStatus={sessionStatus}
         onToggleConnection={onToggleConnection}
-        isPTTActive={isPTTActive}
-        setIsPTTActive={setIsPTTActive}
-        isPTTUserSpeaking={isPTTUserSpeaking}
-        handleTalkButtonDown={handleTalkButtonDown}
-        handleTalkButtonUp={handleTalkButtonUp}
       />
     </div>
   );
