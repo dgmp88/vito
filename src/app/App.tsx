@@ -57,6 +57,7 @@ function App() {
   const [userText, setUserText] = useState<string>("");
   const [isPTTActive, setIsPTTActive] = useState<boolean>(false);
   const [isPTTUserSpeaking, setIsPTTUserSpeaking] = useState<boolean>(false);
+  const [activeMainTab, setActiveMainTab] = useState<"transcript" | "panel">("transcript");
 
   // Initialize the recording hook.
   const { startRecording, stopRecording, downloadRecording } =
@@ -237,6 +238,16 @@ function App() {
       stopRecording();
     };
   }, [sessionStatus]);
+  const transcriptComponent = (
+    <Transcript
+      userText={userText}
+      setUserText={setUserText}
+      onSendMessage={handleSendTextMessage}
+      downloadRecording={downloadRecording}
+      canSend={sessionStatus === "CONNECTED"}
+    />
+  );
+
 
   return (
     <div className="text-base flex flex-col h-screen bg-gray-100 text-gray-800 relative">
@@ -260,15 +271,35 @@ function App() {
       </div>
 
       <div className="flex flex-1 gap-2 px-2 overflow-hidden relative">
-        <Transcript
-          userText={userText}
-          setUserText={setUserText}
-          onSendMessage={handleSendTextMessage}
-          downloadRecording={downloadRecording}
-          canSend={sessionStatus === "CONNECTED"}
-        />
-
-        <TabbedPanel isExpanded={true} />
+        <div className="hidden md:flex flex-1 gap-2 overflow-hidden">
+          {transcriptComponent}
+          <TabbedPanel isExpanded={true} />
+        </div>
+        <div className="flex md:hidden flex-1 flex-col overflow-hidden">
+          <div className="flex items-center justify-between px-6 py-3.5 sticky top-0 z-10 text-base border-b bg-white rounded-t-xl">
+            <div className="flex space-x-4">
+              <button
+                onClick={() => setActiveMainTab("transcript")}
+                className={`font-semibold ${activeMainTab === "transcript" ? "text-blue-600" : "text-gray-500"}`}
+              >
+                Transcript
+              </button>
+              <button
+                onClick={() => setActiveMainTab("panel")}
+                className={`font-semibold ${activeMainTab === "panel" ? "text-blue-600" : "text-gray-500"}`}
+              >
+                Document/Logs
+              </button>
+            </div>
+          </div>
+          <div className="flex-1 overflow-auto">
+            {activeMainTab === "transcript" ? (
+              transcriptComponent
+            ) : (
+              <TabbedPanel isExpanded={true} />
+            )}
+          </div>
+        </div>
       </div>
 
       <BottomToolbar
