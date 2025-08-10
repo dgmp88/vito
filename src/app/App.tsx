@@ -94,9 +94,6 @@ function App() {
       const EPHEMERAL_KEY = await fetchEphemeralKey();
       if (!EPHEMERAL_KEY) return;
 
-      const companyName = "newTelco";
-      const guardrail = createModerationGuardrail(companyName);
-
       await connect({
         getEphemeralKey: async () => EPHEMERAL_KEY,
         initialAgents: [voiceAgent],
