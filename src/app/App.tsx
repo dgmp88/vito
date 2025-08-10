@@ -57,6 +57,8 @@ function App() {
   const [userText, setUserText] = useState<string>("");
   const [isPTTActive, setIsPTTActive] = useState<boolean>(false);
   const [isPTTUserSpeaking, setIsPTTUserSpeaking] = useState<boolean>(false);
+  const [mainTab, setMainTab] =
+    useState<"transcript" | "panel">("transcript");
 
   // Initialize the recording hook.
   const { startRecording, stopRecording, downloadRecording } =
@@ -259,16 +261,47 @@ function App() {
         </div>
       </div>
 
-      <div className="flex flex-1 gap-2 px-2 overflow-hidden relative">
-        <Transcript
-          userText={userText}
-          setUserText={setUserText}
-          onSendMessage={handleSendTextMessage}
-          downloadRecording={downloadRecording}
-          canSend={sessionStatus === "CONNECTED"}
-        />
-
-        <TabbedPanel isExpanded={true} />
+      <div className="flex flex-1 flex-col px-2 overflow-hidden relative">
+        <div className="md:hidden flex items-center justify-center gap-4 mb-2">
+          <button
+            onClick={() => setMainTab("transcript")}
+            className={`font-semibold ${
+              mainTab === "transcript" ? "text-blue-600" : "text-gray-500"
+            }`}
+          >
+            Transcript
+          </button>
+          <button
+            onClick={() => setMainTab("panel")}
+            className={`font-semibold ${
+              mainTab === "panel" ? "text-blue-600" : "text-gray-500"
+            }`}
+          >
+            Document/Logs
+          </button>
+        </div>
+        <div className="flex flex-1 gap-2 overflow-hidden">
+          <div
+            className={`flex-1 ${
+              mainTab === "transcript" ? "block" : "hidden"
+            } md:block`}
+          >
+            <Transcript
+              userText={userText}
+              setUserText={setUserText}
+              onSendMessage={handleSendTextMessage}
+              downloadRecording={downloadRecording}
+              canSend={sessionStatus === "CONNECTED"}
+            />
+          </div>
+          <div
+            className={`${
+              mainTab === "panel" ? "block" : "hidden"
+            } w-full md:w-1/2 md:block`}
+          >
+            <TabbedPanel isExpanded={true} />
+          </div>
+        </div>
       </div>
 
       <BottomToolbar
