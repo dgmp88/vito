@@ -54,7 +54,7 @@ function App() {
     useState<SessionStatus>("DISCONNECTED");
 
   const [userText, setUserText] = useState<string>("");
-
+  const [mainTab, setMainTab] = useState<"transcript" | "panel">("transcript");
   // Initialize the recording hook.
   const { startRecording, stopRecording, downloadRecording } =
     useAudioDownload();
@@ -93,9 +93,6 @@ function App() {
     try {
       const EPHEMERAL_KEY = await fetchEphemeralKey();
       if (!EPHEMERAL_KEY) return;
-
-      const companyName = "newTelco";
-      const guardrail = createModerationGuardrail(companyName);
 
       await connect({
         getEphemeralKey: async () => EPHEMERAL_KEY,
@@ -188,7 +185,6 @@ function App() {
     }
   };
 
-
   useEffect(() => {
     if (sessionStatus === "CONNECTED" && audioElementRef.current?.srcObject) {
       // The remote audio stream from the audio element.
@@ -223,16 +219,48 @@ function App() {
         </div>
       </div>
 
-      <div className="flex flex-1 gap-2 px-2 overflow-hidden relative">
-        <Transcript
-          userText={userText}
-          setUserText={setUserText}
-          onSendMessage={handleSendTextMessage}
-          downloadRecording={downloadRecording}
-          canSend={sessionStatus === "CONNECTED"}
-        />
+      <div className="md:hidden flex px-2 border-b">
+        <button
+          onClick={() => setMainTab("transcript")}
+          className={`flex-1 py-2 font-semibold ${
+            mainTab === "transcript"
+              ? "text-blue-600 border-b-2 border-blue-600"
+              : "text-gray-500"
+          }`}
+        >
+          Transcript
+        </button>
+        <button
+          onClick={() => setMainTab("panel")}
+          className={`flex-1 py-2 font-semibold ${
+            mainTab === "panel"
+              ? "text-blue-600 border-b-2 border-blue-600"
+              : "text-gray-500"
+          }`}
+        >
+          Document/Logs
+        </button>
+      </div>
 
-        <TabbedPanel isExpanded={true} />
+      <div className="flex flex-1 gap-2 px-2 overflow-hidden relative">
+        <div
+          className={`${
+            mainTab === "transcript" ? "flex" : "hidden"
+          } md:flex flex-1`}
+        >
+          <Transcript
+            userText={userText}
+            setUserText={setUserText}
+            onSendMessage={handleSendTextMessage}
+            downloadRecording={downloadRecording}
+            canSend={sessionStatus === "CONNECTED"}
+          />
+        </div>
+
+        <TabbedPanel
+          isExpanded={true}
+          className={`${mainTab === "panel" ? "" : "hidden"} md:flex`}
+        />
       </div>
 
       <BottomToolbar
