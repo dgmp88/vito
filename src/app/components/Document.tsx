@@ -9,7 +9,7 @@ export interface DocumentProps {
   isExpanded: boolean;
 }
 
-const DEFAULT_TEXT = `# No document created yet
+export const DEFAULT_TEXT = `# No document created yet
 
 Ask the agent to create a document. It will generate Markdown for you **like** *this*`;
 
