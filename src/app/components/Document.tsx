@@ -1,7 +1,7 @@
 "use client";
 
 import React from "react";
-import { useDocumentStore } from "@/stores/documentStore";
+import { useConversationStore } from "@/stores/conversationStore";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 
@@ -14,7 +14,10 @@ const DEFAULT_TEXT = `# No document created yet
 Ask the agent to create a document. It will generate Markdown for you **like** *this*`;
 
 function Document({ isExpanded }: DocumentProps) {
-  const document = useDocumentStore((state) => state.document);
+  const document = useConversationStore((state) => {
+    const conv = state.conversations.find((c) => c.id === state.currentId);
+    return conv?.document ?? "";
+  });
 
   return (
     <div className="h-full">

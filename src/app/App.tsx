@@ -17,6 +17,7 @@ import { useTranscript } from "@/app/contexts/TranscriptContext";
 import { useEvent } from "@/app/contexts/EventContext";
 import { useRealtimeSession } from "./hooks/useRealtimeSession";
 import { createModerationGuardrail } from "@/app/agentConfigs/guardrails";
+import { useConversationStore } from "@/stores/conversationStore";
 
 // Agent configs
 import { voiceAgent } from "@/app/agentConfigs/voiceAgent";
@@ -27,6 +28,10 @@ import { useHandleSessionHistory } from "./hooks/useHandleSessionHistory";
 function App() {
   const { addTranscriptMessage, addTranscriptBreadcrumb } = useTranscript();
   const { logClientEvent, logServerEvent } = useEvent();
+  const conversations = useConversationStore((state) => state.conversations);
+  const currentConversationId = useConversationStore((state) => state.currentId);
+  const createConversation = useConversationStore((state) => state.createConversation);
+  const selectConversation = useConversationStore((state) => state.selectConversation);
 
   const audioElementRef = useRef<HTMLAudioElement | null>(null);
 
@@ -57,6 +62,12 @@ function App() {
   const [userText, setUserText] = useState<string>("");
   const [isPTTActive, setIsPTTActive] = useState<boolean>(false);
   const [isPTTUserSpeaking, setIsPTTUserSpeaking] = useState<boolean>(false);
+
+  useEffect(() => {
+    if (!currentConversationId) {
+      createConversation();
+    }
+  }, [currentConversationId, createConversation]);
 
   // Initialize the recording hook.
   const { startRecording, stopRecording, downloadRecording } =
@@ -256,6 +267,25 @@ function App() {
             />
           </div>
           <div>Vito</div>
+        </div>
+        <div className="flex items-center gap-2">
+          <select
+            className="border rounded px-2 py-1 text-sm"
+            value={currentConversationId || ""}
+            onChange={(e) => selectConversation(e.target.value)}
+          >
+            {conversations.map((c) => (
+              <option key={c.id} value={c.id}>
+                {new Date(c.startedAt).toLocaleString()}
+              </option>
+            ))}
+          </select>
+          <button
+            className="border rounded px-2 py-1 text-sm"
+            onClick={() => createConversation()}
+          >
+            New
+          </button>
         </div>
       </div>
 

@@ -1,5 +1,5 @@
 import { RealtimeItem, tool } from "@openai/agents/realtime";
-import { documentActions } from "@/stores/documentStore";
+import { conversationActions } from "@/stores/conversationStore";
 import { eventActions } from "@/stores/eventStore";
 
 export const documentBuilderAgentInstructions = `You are an expert document builder agent, tasked with collaborating to create a document for a user. You will be given the full conversation history so far, and you should create or update the document as needed.
@@ -39,7 +39,7 @@ export const documentUpdaterTools = [
         { type: "updateDocument", input },
         "tool call",
       );
-      documentActions.updateDocument((input as any).newContent);
+      conversationActions.updateDocument((input as any).newContent);
       return { status: "success" };
     },
   }),
@@ -90,7 +90,7 @@ function getToolResponse(fName: string, args: any) {
         { type: "updateDocument", args },
         "tool call",
       );
-      documentActions.updateDocument(args.newContent);
+      conversationActions.updateDocument(args.newContent);
 
       return "Document updated";
     default:
@@ -205,7 +205,7 @@ export const updateDocumentAgent = tool({
 
     const systemContent = documentBuilderAgentInstructions.replace(
       "{{currentDocument}}",
-      documentActions.getDocument(),
+      conversationActions.getDocument(),
     );
 
     const inputMessages = [
