@@ -11,8 +11,6 @@
 #
 set -euo pipefail
 
-cd "$(dirname "$0")/.."
-
 CONFIG="${CONFIG:-debug}"
 APP_NAME="Vito"
 BUILD_DIR=".build/${CONFIG}"
@@ -61,6 +59,7 @@ mkdir -p "${INSTALL_BUNDLE}/Contents/MacOS"
 mkdir -p "${INSTALL_BUNDLE}/Contents/Resources"
 cp "${BUILD_DIR}/${APP_NAME}" "${INSTALL_BUNDLE}/Contents/MacOS/${APP_NAME}"
 cp "Resources/Info.plist" "${INSTALL_BUNDLE}/Contents/Info.plist"
+cp "Resources/AppIcon.icns" "${INSTALL_BUNDLE}/Contents/Resources/AppIcon.icns"
 
 # Sign in place, after assembly, so the signature seals the final bundle.
 echo "==> Code-signing with identity: ${IDENTITY}"

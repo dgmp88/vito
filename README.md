@@ -25,7 +25,7 @@ document in the side pane.
 
 ```bash
 # Build an .app bundle, code-sign it, install to /Applications, and launch
-scripts/run.sh
+run.sh
 ```
 
 `run.sh` signs with a stable identity so macOS doesn't re-prompt for the
@@ -37,7 +37,7 @@ falling back to the first available identity, then to ad-hoc. It installs to
 Add your OpenRouter API key in the in-app **Settings** (⌘,) on first launch;
 it's stored locally in `UserDefaults`. Get a key at openrouter.ai/keys.
 
-`scripts/run.sh` assembles a real `.app` bundle because the microphone TCC
+`run.sh` assembles a real `.app` bundle because the microphone TCC
 prompt and FluidAudio's model download don't behave reliably from a bare
 `swift run` binary.
 
@@ -62,7 +62,7 @@ Sources/Vito/
   LLM/DocumentAgent.swift      # OpenRouter multi-turn chat + write_document tool
   Views/                       # ContentView, sidebar, panes, bottom bar, settings
 Resources/Info.plist     # bundle id + NSMicrophoneUsageDescription
-scripts/run.sh           # build → bundle → sign → launch
+run.sh                   # build → bundle → sign → launch
 ```
 
 See [`NOTES.md`](NOTES.md) for open questions to revisit.
