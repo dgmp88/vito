@@ -4,8 +4,6 @@ A tiny **voice-in, text/document-out** assistant for macOS. You speak, it
 transcribes on-device, and an LLM either replies in text or rewrites a markdown
 document in the side pane.
 
-This is an intentionally narrow product spike — see
-[`NATIVE_MACOS_MINIMAL_PLAN.md`](NATIVE_MACOS_MINIMAL_PLAN.md).
 
 ## What it does
 
@@ -20,8 +18,8 @@ This is an intentionally narrow product spike — see
 - Swift + SwiftUI, Swift Package Manager
 - macOS 14+ Apple Silicon
 - ASR: [FluidAudio](https://github.com/FluidInference/FluidAudio) `0.13.6` (Parakeet TDT, CoreML/ANE)
-- LLM: [MacPaw/OpenAI](https://github.com/MacPaw/OpenAI) `0.5.0`, pointed at OpenRouter
-- State: in-memory only
+- LLM: raw URLSession client to OpenRouter (`/chat/completions`), multi-turn
+- State: chats persisted with **SwiftData**; conversation history drives the transcript and document
 
 ## Running
 
@@ -49,13 +47,14 @@ generated bundle for the permission prompt.
 
 ```
 Sources/Vito/
-  VitoApp.swift          # @main SwiftUI App; mic permission + model warm-up
-  AppState.swift         # @Observable single source of truth + the flow
+  VitoApp.swift          # @main SwiftUI App; SwiftData container + mic/model warm-up
+  AppState.swift         # @Observable orchestrator; selected conversation + the flow
+  Models/Conversation.swift   # SwiftData Conversation/Message + OpenAI-shaped ChatMessage
   Config/AppConfig.swift # OpenRouter key + model resolution
   Audio/AudioRecorder.swift   # AVAudioEngine tap → temp file
   STT/Transcriber.swift       # FluidAudio Parakeet wrapper
-  LLM/DocumentAgent.swift      # OpenRouter chat + write_document tool
-  Views/                       # ContentView, panes, bottom bar, settings
+  LLM/DocumentAgent.swift      # OpenRouter multi-turn chat + write_document tool
+  Views/                       # ContentView, sidebar, panes, bottom bar, settings
 Resources/Info.plist     # bundle id + NSMicrophoneUsageDescription
 scripts/run.sh           # build → bundle → sign → launch
 ```

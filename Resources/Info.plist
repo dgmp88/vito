@@ -7,7 +7,7 @@
     <key>CFBundleDisplayName</key>
     <string>Vito</string>
     <key>CFBundleIdentifier</key>
-    <string>com.faultline.vito</string>
+    <string>com.gerg.vito</string>
     <key>CFBundleExecutable</key>
     <string>Vito</string>
     <key>CFBundlePackageType</key>

@@ -18,7 +18,7 @@ final class AudioRecorder {
         }
     }
 
-    private let logger = Logger(subsystem: "com.faultline.vito", category: "AudioRecorder")
+    private let logger = Logger(subsystem: "com.gerg.vito", category: "AudioRecorder")
 
     private let engine = AVAudioEngine()
     private var file: AVAudioFile?
@@ -45,7 +45,8 @@ final class AudioRecorder {
             do {
                 try file.write(from: buffer)
             } catch {
-                self.logger.error("Tap write failed: \(error.localizedDescription, privacy: .public)")
+                self.logger.error(
+                    "Tap write failed: \(error.localizedDescription, privacy: .public)")
             }
         }
 

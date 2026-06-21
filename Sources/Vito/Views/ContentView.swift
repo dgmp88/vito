@@ -1,3 +1,4 @@
+import SwiftData
 import SwiftUI
 
 struct ContentView: View {
@@ -5,18 +6,33 @@ struct ContentView: View {
     @State private var showingSettings = false
 
     var body: some View {
-        VStack(spacing: 0) {
-            ModelStatusBanner()
+        NavigationSplitView {
+            SidebarView()
+                .navigationSplitViewColumnWidth(min: 200, ideal: 240, max: 360)
+        } detail: {
+            VStack(spacing: 0) {
+                ModelStatusBanner()
 
-            HSplitView {
-                TranscriptPane()
-                    .frame(minWidth: 280)
-                DocumentPane()
-                    .frame(minWidth: 320)
+                HSplitView {
+                    TranscriptPane()
+                        .frame(minWidth: 280)
+                    DocumentPane()
+                        .frame(minWidth: 320)
+                }
+
+                Divider()
+                BottomBar(showingSettings: $showingSettings)
             }
-
-            Divider()
-            BottomBar(showingSettings: $showingSettings)
+        }
+        .background {
+            // Spacebar toggles recording from anywhere in the window. Disabling
+            // the button removes the shortcut while busy or while Settings is up,
+            // so space only acts when a record/stop is actually valid.
+            Button("Toggle Recording") { state.toggleRecording() }
+                .keyboardShortcut(.space, modifiers: [])
+                .disabled(showingSettings || !state.modelReady || state.isBusy)
+                .opacity(0)
+                .accessibilityHidden(true)
         }
         .sheet(isPresented: $showingSettings) {
             SettingsView()
@@ -62,5 +78,11 @@ private struct ModelStatusBanner: View {
 }
 
 #Preview {
-    ContentView().environment(AppState())
+    let container = try! ModelContainer(
+        for: Conversation.self,
+        configurations: ModelConfiguration(isStoredInMemoryOnly: true)
+    )
+    return ContentView()
+        .environment(AppState(modelContext: container.mainContext))
+        .modelContainer(container)
 }

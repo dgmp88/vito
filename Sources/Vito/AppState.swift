@@ -1,5 +1,6 @@
 import Foundation
 import Observation
+import SwiftData
 import os
 
 /// High-level app phases shown to the user (plan §4 User Feedback).
@@ -13,9 +14,15 @@ enum Phase: Equatable {
 
 /// Readiness of the on-device Parakeet model (downloaded + loaded on first run).
 enum ModelStatus: Equatable {
-    case preparing(String)   // human-readable progress message
+    case preparing(String)  // human-readable progress message
     case ready
     case failed(String)
+}
+
+/// Errors can opt into providing a longer, copyable detail string (e.g. a raw
+/// API response) for the error-detail sheet.
+protocol DetailedError {
+    var detail: String? { get }
 }
 
 struct TranscriptEntry: Identifiable, Equatable {
@@ -25,20 +32,50 @@ struct TranscriptEntry: Identifiable, Equatable {
     let text: String
 }
 
-/// Single source of truth for the UI. In-memory only (plan §State).
+/// Single source of truth for the UI. Conversations are persisted with SwiftData;
+/// the selected conversation's message history drives the transcript and document.
 @MainActor
 @Observable
 final class AppState {
-    private let logger = Logger(subsystem: "com.faultline.vito", category: "AppState")
+    private let logger = Logger(subsystem: "com.gerg.vito", category: "AppState")
 
     var phase: Phase = .idle
     var modelStatus: ModelStatus = .preparing("Starting up…")
-    var transcript: [TranscriptEntry] = []
-    var document: String = ""
 
+    /// The conversation currently shown. `nil` = a fresh, not-yet-created chat
+    /// (the "New" state); the first utterance lazily creates and selects one.
+    var selectedConversation: Conversation?
+
+    /// Full, copyable detail for the most recent error (e.g. raw API response).
+    /// `nil` when the current error has no extra detail.
+    var errorDetail: String?
+
+    /// Live streaming state while the assistant responds (phase `.updatingDocument`).
+    /// Reset before each turn and cleared once the turn settles.
+    var streamedText: String = ""
+    var streamedTokens: Int = 0
+    var isWritingDocument: Bool = false
+
+    private let modelContext: ModelContext
     private let recorder = AudioRecorder()
     private let transcriber = Transcriber()
     private let agent = DocumentAgent()
+
+    init(modelContext: ModelContext) {
+        self.modelContext = modelContext
+    }
+
+    // MARK: - Derived view state
+
+    /// User utterances and text replies for the selected conversation.
+    var transcript: [TranscriptEntry] {
+        selectedConversation?.transcript ?? []
+    }
+
+    /// The current document = the latest `write_document` result in the history.
+    var document: String {
+        selectedConversation?.document ?? ""
+    }
 
     var isRecording: Bool { phase == .recording }
 
@@ -62,10 +99,37 @@ final class AppState {
                 }
                 modelStatus = .ready
             } catch {
-                logger.error("Model prepare failed: \(error.localizedDescription, privacy: .public)")
+                logger.error(
+                    "Model prepare failed: \(error.localizedDescription, privacy: .public)")
                 modelStatus = .failed(error.localizedDescription)
             }
         }
+    }
+
+    // MARK: - Conversation management
+
+    /// Start a fresh chat. Defers creation until the first utterance so empty
+    /// conversations never get persisted.
+    func newConversation() {
+        guard !isBusy else { return }
+        selectedConversation = nil
+        errorDetail = nil
+        if case .error = phase { phase = .idle }
+    }
+
+    func select(_ conversation: Conversation) {
+        guard !isBusy else { return }
+        selectedConversation = conversation
+        errorDetail = nil
+        if case .error = phase { phase = .idle }
+    }
+
+    func delete(_ conversation: Conversation) {
+        if conversation === selectedConversation {
+            selectedConversation = nil
+        }
+        modelContext.delete(conversation)
+        try? modelContext.save()
     }
 
     // MARK: - Record / Stop
@@ -77,17 +141,18 @@ final class AppState {
         case .idle, .error:
             startRecording()
         default:
-            break // ignore taps while busy
+            break  // ignore taps while busy
         }
     }
 
     private func startRecording() {
         guard modelReady else { return }
+        errorDetail = nil
         do {
             try recorder.start()
             phase = .recording
         } catch {
-            phase = .error("Couldn't start recording: \(error.localizedDescription)")
+            fail("Couldn't start recording", error)
         }
     }
 
@@ -96,7 +161,7 @@ final class AppState {
         do {
             audioURL = try recorder.stop()
         } catch {
-            phase = .error("Recording failed: \(error.localizedDescription)")
+            fail("Recording failed", error)
             return
         }
 
@@ -114,7 +179,7 @@ final class AppState {
         do {
             spoken = try await transcriber.transcribe(fileURL: audioURL)
         } catch {
-            phase = .error("Transcription failed: \(error.localizedDescription)")
+            fail("Transcription failed", error)
             return
         }
 
@@ -124,29 +189,91 @@ final class AppState {
             phase = .idle
             return
         }
-        transcript.append(TranscriptEntry(role: .user, text: trimmed))
 
-        // 2. Text → LLM (may answer in text or rewrite the document)
+        // Lazily create the conversation on first speech, then record the turn.
+        let conversation = ensureConversation()
+        if conversation.title.isEmpty {
+            conversation.title = Self.makeTitle(from: trimmed)
+        }
+        append(ChatMessage(role: "user", content: trimmed), to: conversation)
+
+        // 2. Text → LLM, sending the full history for multi-turn context.
         phase = .updatingDocument
+        resetStreamingState()
         do {
-            let outcome = try await agent.respond(utterance: trimmed, currentDocument: document)
-            switch outcome {
-            case .document(let markdown):
-                document = markdown
-            case .text(let reply):
-                transcript.append(TranscriptEntry(role: .assistant, text: reply))
+            let appended = try await agent.respond(
+                history: conversation.orderedMessages.map(\.chatMessage)
+            ) { [weak self] update in
+                self?.streamedText = update.assistantText
+                self?.streamedTokens = update.tokenCount
+                self?.isWritingDocument = update.isWritingDocument
             }
+            for message in appended {
+                append(message, to: conversation)
+            }
+            conversation.updatedAt = .now
+            try? modelContext.save()
+            resetStreamingState()
             phase = .idle
         } catch {
-            phase = .error("Assistant failed: \(error.localizedDescription)")
+            resetStreamingState()
+            fail("Assistant failed", error)
+            try? modelContext.save()  // keep the user's utterance
         }
     }
 
-    // MARK: - Clear
+    private func resetStreamingState() {
+        streamedText = ""
+        streamedTokens = 0
+        isWritingDocument = false
+    }
 
-    func clear() {
-        transcript.removeAll()
-        document = ""
-        if case .error = phase { phase = .idle }
+    // MARK: - Persistence helpers
+
+    private func ensureConversation() -> Conversation {
+        if let selectedConversation { return selectedConversation }
+        let conversation = Conversation()
+        modelContext.insert(conversation)
+        selectedConversation = conversation
+        return conversation
+    }
+
+    private func append(_ message: ChatMessage, to conversation: Conversation) {
+        let stored = Message(
+            index: conversation.messages.count,
+            role: message.role,
+            content: message.content,
+            toolCallsJSON: message.toolCallsJSON,
+            toolCallID: message.toolCallID
+        )
+        stored.conversation = conversation
+        conversation.messages.append(stored)
+        modelContext.insert(stored)
+    }
+
+    /// First line of the first utterance, trimmed to a short title.
+    private static func makeTitle(from utterance: String) -> String {
+        let firstLine =
+            utterance.split(whereSeparator: \.isNewline).first.map(String.init) ?? utterance
+        let trimmed = firstLine.trimmingCharacters(in: .whitespaces)
+        return trimmed.count > 50
+            ? String(trimmed.prefix(50)).trimmingCharacters(in: .whitespaces) + "…" : trimmed
+    }
+
+    // MARK: - Errors
+
+    /// Sets the error phase with a short message and captures any longer detail
+    /// (raw response, full error dump) for the detail sheet.
+    private func fail(_ context: String, _ error: Error) {
+        phase = .error("\(context): \(error.localizedDescription)")
+        if let detailed = error as? DetailedError, let detail = detailed.detail {
+            errorDetail = "\(context): \(error.localizedDescription)\n\n\(detail)"
+        } else {
+            // Fall back to the full error dump so there's always something to inspect.
+            errorDetail =
+                "\(context): \(error.localizedDescription)\n\n\(String(reflecting: error))"
+        }
+        logger.error(
+            "\(context, privacy: .public): \(error.localizedDescription, privacy: .public)")
     }
 }

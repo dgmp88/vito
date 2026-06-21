@@ -17,7 +17,7 @@ actor Transcriber {
         }
     }
 
-    private let logger = Logger(subsystem: "com.faultline.vito", category: "Transcriber")
+    private let logger = Logger(subsystem: "com.gerg.vito", category: "Transcriber")
     private var manager: AsrManager?
 
     /// Downloads (if needed) and loads the model into memory.
@@ -39,7 +39,8 @@ actor Transcriber {
             }
         }
 
-        let models = try await AsrModels.downloadAndLoad(version: .v3, progressHandler: progressHandler)
+        let models = try await AsrModels.downloadAndLoad(
+            version: .v3, progressHandler: progressHandler)
         onProgress("Loading model into memory…")
         let manager = AsrManager(config: .default)
         try await manager.loadModels(models)

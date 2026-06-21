@@ -4,6 +4,7 @@ import SwiftUI
 struct BottomBar: View {
     @Environment(AppState.self) private var state
     @Binding var showingSettings: Bool
+    @State private var showingErrorDetail = false
 
     var body: some View {
         HStack(spacing: 14) {
@@ -12,15 +13,26 @@ struct BottomBar: View {
             statusText
                 .foregroundStyle(.secondary)
                 .font(.callout)
+                .lineLimit(1)
+                .truncationMode(.tail)
+
+            if state.errorDetail != nil {
+                Button("Details") { showingErrorDetail = true }
+                    .buttonStyle(.link)
+                    .font(.callout)
+            }
 
             Spacer()
 
             Button(role: .destructive) {
-                state.clear()
+                if let conversation = state.selectedConversation {
+                    state.delete(conversation)
+                }
             } label: {
-                Label("Clear", systemImage: "trash")
+                Label("Delete", systemImage: "trash")
             }
-            .disabled(state.transcript.isEmpty && state.document.isEmpty)
+            .help("Delete this chat")
+            .disabled(state.selectedConversation == nil)
 
             Button {
                 showingSettings = true
@@ -33,6 +45,9 @@ struct BottomBar: View {
         .padding(.horizontal, 16)
         .padding(.vertical, 12)
         .background(.bar)
+        .sheet(isPresented: $showingErrorDetail) {
+            ErrorDetailView(detail: state.errorDetail ?? "No detail available.")
+        }
     }
 
     private var recordButton: some View {
@@ -59,7 +74,13 @@ struct BottomBar: View {
         case .transcribing:
             Text("Transcribing…")
         case .updatingDocument:
-            Text("Thinking…")
+            let verb = state.isWritingDocument ? "Writing" : "Thinking"
+            if state.streamedTokens > 0 {
+                Text("\(verb)… \(state.streamedTokens) tokens")
+                    .monospacedDigit()
+            } else {
+                Text("\(verb)…")
+            }
         case .error(let message):
             Text(message).foregroundStyle(.red)
         }
