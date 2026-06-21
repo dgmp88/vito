@@ -98,18 +98,30 @@ private struct ThinkingRow: View {
     }
 }
 
-struct PaneHeader: View {
+struct PaneHeader<Accessory: View>: View {
     let title: String
     let systemImage: String
+    @ViewBuilder let accessory: () -> Accessory
+
+    init(
+        title: String,
+        systemImage: String,
+        @ViewBuilder accessory: @escaping () -> Accessory = { EmptyView() }
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.accessory = accessory
+    }
 
     var body: some View {
         HStack(spacing: 6) {
             Label(title, systemImage: systemImage)
                 .font(.headline)
             Spacer()
+            accessory()
         }
         .padding(.horizontal, 16)
-        .padding(.vertical, 12)
+        .frame(height: 44)
         .overlay(alignment: .bottom) { Divider() }
     }
 }

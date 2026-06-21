@@ -6,10 +6,7 @@ struct DocumentPane: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            HStack(spacing: 6) {
-                Label("Document", systemImage: "doc.text")
-                    .font(.headline)
-                Spacer()
+            PaneHeader(title: "Document", systemImage: "doc.text") {
                 Button {
                     copyToPasteboard(state.document)
                 } label: {
@@ -19,9 +16,6 @@ struct DocumentPane: View {
                 .help("Copy markdown")
                 .disabled(state.document.isEmpty)
             }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .overlay(alignment: .bottom) { Divider() }
 
             if state.document.isEmpty {
                 emptyState
