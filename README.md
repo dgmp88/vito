@@ -24,9 +24,15 @@ document in the side pane.
 ## Running
 
 ```bash
-# Build an .app bundle, ad-hoc sign it, and launch
+# Build an .app bundle, code-sign it, install to /Applications, and launch
 scripts/run.sh
 ```
+
+`run.sh` signs with a stable identity so macOS doesn't re-prompt for the
+microphone on every rebuild. It auto-detects a code-signing identity named
+`Vito` (create a self-signed **Code Signing** cert in Keychain Access once),
+falling back to the first available identity, then to ad-hoc. It installs to
+`/Applications/Vito.app` so the app can be pinned to the Dock.
 
 Add your OpenRouter API key in the in-app **Settings** (⌘,) on first launch;
 it's stored locally in `UserDefaults`. Get a key at openrouter.ai/keys.
