@@ -61,9 +61,14 @@ cp "${BUILD_DIR}/${APP_NAME}" "${INSTALL_BUNDLE}/Contents/MacOS/${APP_NAME}"
 cp "Resources/Info.plist" "${INSTALL_BUNDLE}/Contents/Info.plist"
 cp "Resources/AppIcon.icns" "${INSTALL_BUNDLE}/Contents/Resources/AppIcon.icns"
 
-# Sign in place, after assembly, so the signature seals the final bundle.
+# Sign in place, after assembly, so the signature seals the final bundle. The
+# entitlements enable the App Sandbox (which isolates the SwiftData store into a
+# per-app container so other apps can't collide with it), plus the network and
+# microphone access the sandbox would otherwise deny.
 echo "==> Code-signing with identity: ${IDENTITY}"
-codesign --force --deep --sign "${IDENTITY}" "${INSTALL_BUNDLE}"
+codesign --force --deep \
+  --entitlements "Resources/Vito.entitlements" \
+  --sign "${IDENTITY}" "${INSTALL_BUNDLE}"
 
 echo "==> Launching…"
 open "${INSTALL_BUNDLE}"
