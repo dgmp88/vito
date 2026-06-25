@@ -48,11 +48,20 @@ private struct ModelStatusBanner: View {
         switch state.modelStatus {
         case .ready:
             EmptyView()
-        case .preparing(let message):
+        case .preparing(let message, let fraction):
             banner(systemImage: "arrow.down.circle", tint: .accentColor) {
-                HStack(spacing: 8) {
-                    ProgressView().controlSize(.small)
-                    Text(message)
+                if let fraction {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(message)
+                        ProgressView(value: fraction)
+                            .progressViewStyle(.linear)
+                            .frame(maxWidth: 260)
+                    }
+                } else {
+                    HStack(spacing: 8) {
+                        ProgressView().controlSize(.small)
+                        Text(message)
+                    }
                 }
             }
         case .failed(let message):

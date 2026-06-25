@@ -14,7 +14,11 @@ enum Phase: Equatable {
 
 /// Readiness of the on-device Parakeet model (downloaded + loaded on first run).
 enum ModelStatus: Equatable {
-    case preparing(String)  // human-readable progress message
+    /// In progress. `fraction` is a 0…1 value when known — byte-accurate across
+    /// the download half (0…0.5) and per-component compile half (0.5…1.0) — or
+    /// `nil` for steps with no measurable progress (listing, loading), which
+    /// render as an indeterminate spinner.
+    case preparing(message: String, fraction: Double?)
     case ready
     case failed(String)
 }
@@ -40,7 +44,7 @@ final class AppState {
     private let logger = Logger(subsystem: "com.gerg.vito", category: "AppState")
 
     var phase: Phase = .idle
-    var modelStatus: ModelStatus = .preparing("Starting up…")
+    var modelStatus: ModelStatus = .preparing(message: "Starting up…", fraction: nil)
 
     /// The conversation currently shown. `nil` = a fresh, not-yet-created chat
     /// (the "New" state); the first utterance lazily creates and selects one.
@@ -94,8 +98,10 @@ final class AppState {
     func prepareModel() {
         Task {
             do {
-                try await transcriber.prepare { [weak self] message in
-                    Task { @MainActor in self?.modelStatus = .preparing(message) }
+                try await transcriber.prepare { [weak self] message, fraction in
+                    Task { @MainActor in
+                        self?.modelStatus = .preparing(message: message, fraction: fraction)
+                    }
                 }
                 modelStatus = .ready
             } catch {

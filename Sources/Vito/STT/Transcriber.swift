@@ -21,27 +21,33 @@ actor Transcriber {
     private var manager: AsrManager?
 
     /// Downloads (if needed) and loads the model into memory.
-    /// `onProgress` is called with coarse human-readable status strings.
-    func prepare(onProgress: @escaping @Sendable (String) -> Void) async throws {
+    /// `onProgress` reports a status message plus a 0…1 fraction when one is
+    /// known (`nil` ⇒ indeterminate). FluidAudio's `fractionCompleted` is
+    /// byte-accurate and maps the download to 0…0.5 and the compile to 0.5…1.0,
+    /// so it drives one continuous bar across both phases.
+    func prepare(onProgress: @escaping @Sendable (String, Double?) -> Void) async throws {
         if manager != nil { return }
 
-        onProgress("Preparing speech model…")
+        onProgress("Preparing speech model…", nil)
         let progressHandler: DownloadUtils.ProgressHandler = { progress in
             switch progress.phase {
             case .listing:
-                onProgress("Preparing speech model download…")
-            case .downloading(let completed, let total):
-                guard total > 0 else { return }
-                let percent = max(0, min(100, Int(progress.fractionCompleted * 100)))
-                onProgress("Downloading speech model… \(percent)% (\(completed)/\(total))")
-            case .compiling:
-                onProgress("Compiling speech model…")
+                // Fetching the file manifest — no byte count yet, stay indeterminate.
+                onProgress("Preparing speech model download…", nil)
+            case .downloading:
+                // Byte-accurate; spans 0…0.5. The single ~425 MB encoder is most
+                // of this, so the bar moves smoothly even while the file count sits.
+                onProgress("Downloading speech model…", progress.fractionCompleted)
+            case .compiling(let modelName):
+                // Spans 0.5…1.0, one step per model component.
+                let name = modelName.isEmpty ? "speech model" : modelName
+                onProgress("Compiling \(name)…", progress.fractionCompleted)
             }
         }
 
         let models = try await AsrModels.downloadAndLoad(
             version: .v3, progressHandler: progressHandler)
-        onProgress("Loading model into memory…")
+        onProgress("Loading model into memory…", nil)
         let manager = AsrManager(config: .default)
         try await manager.loadModels(models)
         self.manager = manager

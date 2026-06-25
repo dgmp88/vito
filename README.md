@@ -41,9 +41,10 @@ it's stored locally in `UserDefaults`. Get a key at openrouter.ai/keys.
 prompt and FluidAudio's model download don't behave reliably from a bare
 `swift run` binary.
 
-> **First run downloads a ~6 GB CoreML model bundle.** The window shows a
-> progress banner while it downloads and compiles; Record stays disabled until
-> the model is ready.
+> **First run downloads a ~470 MB CoreML model bundle** (Parakeet TDT 0.6B-v3:
+> a ~425 MB encoder plus smaller decoder/joint/preprocessor weights). The window
+> shows a progress banner while it downloads and compiles; Record stays disabled
+> until the model is ready.
 
 You can also open it in Xcode with `open Package.swift` (select the `Vito`
 scheme), though you may need to add the microphone usage string to the scheme's
