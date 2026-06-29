@@ -1,69 +1,98 @@
-# Vito (native macOS spike)
+# Vito (web)
 
-A tiny **voice-in, text/document-out** assistant for macOS. You speak, it
-transcribes on-device, and an LLM either replies in text or rewrites a markdown
-document in the side pane.
+A tiny **voice-in, text/document-out** assistant in the browser. You speak, it
+transcribes in real time, and an LLM either replies in text or rewrites a
+markdown document in the side pane.
 
+This is a web port of the native macOS spike — same flow, same clean two-pane
+aesthetic — built on SolidStart with OpenAI's realtime transcription and GPT-5.5.
 
 ## What it does
 
-1. Press **Record**, speak, press **Stop**.
-2. Local ASR (Parakeet TDT 0.6B-v3 via FluidAudio) turns speech into text.
-3. An OpenRouter LLM (default `google/gemini-2.5-flash`) either:
+1. Press **Record** (or hit **Space**), speak, press **Stop**.
+2. Realtime ASR (OpenAI `gpt-realtime-whisper` over WebRTC) streams the
+   transcript live as you talk.
+3. On Stop, the utterance goes to an LLM (`gpt-5.5`) which either:
    - replies in text (shown in the transcript pane), or
    - calls the `write_document` tool to create/replace the markdown document.
 
 ## Stack
 
-- Swift + SwiftUI, Swift Package Manager
-- macOS 14+ Apple Silicon
-- ASR: [FluidAudio](https://github.com/FluidInference/FluidAudio) `0.13.6` (Parakeet TDT, CoreML/ANE)
-- LLM: raw URLSession client to OpenRouter (`/chat/completions`), multi-turn
-- State: chats persisted with **SwiftData**; conversation history drives the transcript and document
+- **SolidStart** (SolidJS + Vinxi/Nitro), TypeScript
+- **ASR**: OpenAI Realtime API, `gpt-realtime-whisper`, browser ↔ OpenAI over
+  WebRTC. The mic track is sent directly to OpenAI; transcript events come back
+  on a data channel.
+- **LLM**: OpenAI `gpt-5.5` via `/chat/completions`, streamed, multi-turn, with
+  a `write_document` tool.
+- **State**: conversations persisted to **localStorage** in OpenAI
+  chat-completions shape (see [Data model](#data-model)).
+
+### Where the API key lives
+
+The OpenAI key is **server-side only** (`OPENAI_API_KEY`). The browser never
+sees it. Two server routes use it:
+
+- `POST /api/realtime-token` — mints a short-lived ephemeral client secret for
+  the transcription session. The browser uses that secret (not your key) to open
+  the WebRTC connection.
+- `POST /api/chat` — proxies the streaming chat completion, attaching the system
+  prompt and `write_document` tool, and pipes the SSE stream back to the browser.
 
 ## Running
 
 ```bash
-# Build an .app bundle, code-sign it, install to /Applications, and launch
-run.sh
+npm install
+
+# Set your OpenAI API key (server-side only). Get one at platform.openai.com.
+cp .env.example .env
+# edit .env and set OPENAI_API_KEY=sk-...
+
+npm run dev          # http://localhost:3000
 ```
 
-`run.sh` signs with a stable identity so macOS doesn't re-prompt for the
-microphone on every rebuild. It auto-detects a code-signing identity named
-`Vito` (create a self-signed **Code Signing** cert in Keychain Access once),
-falling back to the first available identity, then to ad-hoc. It installs to
-`/Applications/Vito.app` so the app can be pinned to the Dock.
+Other scripts: `npm run build` (production build), `npm start` (serve the
+build), `npm run typecheck`.
 
-Add your OpenRouter API key in the in-app **Settings** (⌘,) on first launch;
-it's stored locally in `UserDefaults`. Get a key at openrouter.ai/keys.
+> Microphone access requires a secure context. `localhost` counts as secure, so
+> dev works out of the box; if you serve it elsewhere, use HTTPS.
 
-`run.sh` assembles a real `.app` bundle because the microphone TCC
-prompt and FluidAudio's model download don't behave reliably from a bare
-`swift run` binary.
+Optional env overrides: `VITO_TRANSCRIBE_MODEL` (default `gpt-realtime-whisper`),
+`VITO_CHAT_MODEL` (default `gpt-5.5`).
 
-> **First run downloads a ~470 MB CoreML model bundle** (Parakeet TDT 0.6B-v3:
-> a ~425 MB encoder plus smaller decoder/joint/preprocessor weights). The window
-> shows a progress banner while it downloads and compiles; Record stays disabled
-> until the model is ready.
+## Data model
 
-You can also open it in Xcode with `open Package.swift` (select the `Vito`
-scheme), though you may need to add the microphone usage string to the scheme's
-generated bundle for the permission prompt.
+Conversations are stored in the **OpenAI chat-completions shape** so the message
+list *is* the resumable request payload (load = decode, resume = re-send) and
+drops straight into a database later with no reshaping. See `src/lib/types.ts`:
+
+- `Conversation { id, title, createdAt, updatedAt, messages: ChatMessage[] }`
+- `ChatMessage { role, content, tool_calls?, tool_call_id? }` — exactly an
+  OpenAI message; tool-call `arguments` are stored as the spec JSON string.
+- The **document** is derived as the markdown from the most recent
+  `write_document` tool call; the **transcript** is derived from the user/assistant
+  messages. Nothing is duplicated — both are projections of `messages`.
+
+Today this lives in `localStorage`; swapping in a DB means persisting the same
+`Conversation` records.
 
 ## Layout
 
 ```
-Sources/Vito/
-  VitoApp.swift          # @main SwiftUI App; SwiftData container + mic/model warm-up
-  AppState.swift         # @Observable orchestrator; selected conversation + the flow
-  Models/Conversation.swift   # SwiftData Conversation/Message + OpenAI-shaped ChatMessage
-  Config/AppConfig.swift # OpenRouter key + model resolution
-  Audio/AudioRecorder.swift   # AVAudioEngine tap → temp file
-  STT/Transcriber.swift       # FluidAudio Parakeet wrapper
-  LLM/DocumentAgent.swift      # OpenRouter multi-turn chat + write_document tool
-  Views/                       # ContentView, sidebar, panes, bottom bar, settings
-Resources/Info.plist     # bundle id + NSMicrophoneUsageDescription
-run.sh                   # build → bundle → sign → launch
+src/
+  app.tsx                    # Router root
+  app.css                    # all styling (forest-green, macOS-flavored theme)
+  entry-client.tsx / entry-server.tsx
+  routes/
+    index.tsx                # the whole app: sidebar + two panes + bottom bar
+    api/realtime-token.ts    # mints the ephemeral transcription token
+    api/chat.ts              # streams the gpt-5.5 chat completion + write_document tool
+  lib/
+    types.ts                 # OAI-shaped Conversation/Message + document/transcript derivations
+    store.ts                 # reactive store + localStorage persistence
+    appState.ts              # phase orchestration: record → transcribe → respond
+    realtime.ts              # WebRTC transcription client (mic → OpenAI → events)
+    agent.ts                 # chat SSE consumer (text + write_document accumulation)
+  components/
+    Sidebar.tsx  TranscriptPane.tsx  DocumentPane.tsx  BottomBar.tsx
+public/logo.svg              # app mark / favicon
 ```
-
-See [`NOTES.md`](NOTES.md) for open questions to revisit.

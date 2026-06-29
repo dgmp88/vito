@@ -1,19 +1,15 @@
-# Swift / SPM
-.build/
-.swiftpm/
-*.xcodeproj
-DerivedData/
-Package.resolved
+# Secrets
+.env
+!.env.example
 
-# Build output
+# SolidStart / Vinxi
+.vinxi/
+.output/
+.nitro/
 dist/
-*.app
+
+# Dependencies
+node_modules/
 
 # macOS
 .DS_Store
-
-# Secrets
-.env
-
-# Reference apps (kept out of this repo)
-example_apps/
