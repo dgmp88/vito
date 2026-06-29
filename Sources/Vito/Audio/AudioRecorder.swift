@@ -25,6 +25,11 @@ final class AudioRecorder {
     private var fileURL: URL?
     private var recording = false
 
+    /// Optional live sink for each captured buffer, fed alongside the file
+    /// write so a streaming transcriber can produce a live preview. Set before
+    /// `start()`; called on the realtime audio thread, so it must not block.
+    var onBuffer: ((AVAudioPCMBuffer) -> Void)?
+
     var isRecording: Bool { recording }
 
     /// Begins capturing. Throws if the engine can't start.
@@ -41,7 +46,9 @@ final class AudioRecorder {
         self.fileURL = url
 
         input.installTap(onBus: 0, bufferSize: 4096, format: format) { [weak self] buffer, _ in
-            guard let self, let file = self.file else { return }
+            guard let self else { return }
+            self.onBuffer?(buffer)
+            guard let file = self.file else { return }
             do {
                 try file.write(from: buffer)
             } catch {
@@ -71,6 +78,7 @@ final class AudioRecorder {
 
         engine.inputNode.removeTap(onBus: 0)
         engine.stop()
+        onBuffer = nil
         // Releasing the AVAudioFile flushes and closes it.
         file = nil
         fileURL = nil

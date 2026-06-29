@@ -1,3 +1,5 @@
+import AVFoundation
+import FluidAudio
 import Foundation
 import Observation
 import SwiftData
@@ -60,10 +62,22 @@ final class AppState {
     var streamedTokens: Int = 0
     var isWritingDocument: Bool = false
 
+    /// Live transcription preview shown while recording. `liveConfirmed` is the
+    /// stable text; `liveVolatile` is the latest low-confidence tail, rendered
+    /// slightly lighter. Both clear once the final transcript is committed.
+    var liveConfirmed: String = ""
+    var liveVolatile: String = ""
+
     private let modelContext: ModelContext
     private let recorder = AudioRecorder()
     private let transcriber = Transcriber()
     private let agent = DocumentAgent()
+
+    /// Bridges realtime tap buffers into an ordered async stream so the live
+    /// recognizer consumes them in sequence (a `Task`-per-buffer would reorder).
+    private var bufferContinuation: AsyncStream<AVAudioPCMBuffer>.Continuation?
+    private var streamForwardTask: Task<Void, Never>?
+    private var streamUpdatesTask: Task<Void, Never>?
 
     init(modelContext: ModelContext) {
         self.modelContext = modelContext
@@ -82,6 +96,13 @@ final class AppState {
     }
 
     var isRecording: Bool { phase == .recording }
+
+    /// True while a live preview is worth showing (recording, or the final pass
+    /// is still running) and some text has come in.
+    var hasLivePreview: Bool {
+        (phase == .recording || phase == .transcribing)
+            && !(liveConfirmed.isEmpty && liveVolatile.isEmpty)
+    }
 
     var isBusy: Bool {
         switch phase {
@@ -154,10 +175,14 @@ final class AppState {
     private func startRecording() {
         guard modelReady else { return }
         errorDetail = nil
+        liveConfirmed = ""
+        liveVolatile = ""
+        beginLivePreview()
         do {
             try recorder.start()
             phase = .recording
         } catch {
+            endLivePreview()
             fail("Couldn't start recording", error)
         }
     }
@@ -167,13 +192,79 @@ final class AppState {
         do {
             audioURL = try recorder.stop()
         } catch {
+            endLivePreview()
             fail("Recording failed", error)
             return
         }
+        // The committed transcript comes from the offline pass below; the live
+        // recognizer was only a preview, so tear it down without awaiting it.
+        endLivePreview()
 
         Task {
             await transcribeThenUpdate(audioURL: audioURL)
         }
+    }
+
+    // MARK: - Live transcription preview
+
+    /// Sets up the streaming recognizer and the buffer/​update plumbing. The tap
+    /// (realtime thread) yields buffers into an `AsyncStream`; one task forwards
+    /// them in order, another applies the partial updates on the main actor.
+    private func beginLivePreview() {
+        let (buffers, continuation) = AsyncStream<AVAudioPCMBuffer>.makeStream()
+        bufferContinuation = continuation
+        recorder.onBuffer = { continuation.yield($0) }
+
+        streamForwardTask = Task {
+            let updates: AsyncStream<SlidingWindowTranscriptionUpdate>
+            do {
+                updates = try await transcriber.beginStreaming()
+            } catch {
+                // Preview is best-effort; the offline pass still runs on Stop.
+                logger.error(
+                    "Live preview unavailable: \(error.localizedDescription, privacy: .public)")
+                return
+            }
+            streamUpdatesTask = Task { @MainActor in
+                for await update in updates { apply(update) }
+            }
+            for await buffer in buffers {
+                await transcriber.streamAudio(buffer)
+            }
+        }
+    }
+
+    /// Mirrors the recognizer's confirm/volatile bookkeeping: a confirmed update
+    /// promotes the prior volatile tail into the stable text, then becomes the
+    /// new volatile tail.
+    private func apply(_ update: SlidingWindowTranscriptionUpdate) {
+        logger.debug(
+            """
+            stream update [\(update.isConfirmed ? "confirmed" : "volatile", privacy: .public)] \
+            conf=\(update.confidence, privacy: .public) \
+            text=\(update.text, privacy: .public)
+            """)
+        if update.isConfirmed, !liveVolatile.isEmpty {
+            liveConfirmed =
+                liveConfirmed.isEmpty ? liveVolatile : liveConfirmed + " " + liveVolatile
+        }
+        liveVolatile = update.text
+    }
+
+    private func endLivePreview() {
+        recorder.onBuffer = nil
+        bufferContinuation?.finish()
+        bufferContinuation = nil
+        streamForwardTask?.cancel()
+        streamForwardTask = nil
+        streamUpdatesTask?.cancel()
+        streamUpdatesTask = nil
+        Task { await transcriber.cancelStreaming() }
+    }
+
+    private func clearLivePreview() {
+        liveConfirmed = ""
+        liveVolatile = ""
     }
 
     private func transcribeThenUpdate(audioURL: URL) async {
@@ -185,6 +276,7 @@ final class AppState {
         do {
             spoken = try await transcriber.transcribe(fileURL: audioURL)
         } catch {
+            clearLivePreview()
             fail("Transcription failed", error)
             return
         }
@@ -192,10 +284,14 @@ final class AppState {
         let trimmed = spoken.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !trimmed.isEmpty else {
             // No speech detected — silently return to idle.
+            clearLivePreview()
             phase = .idle
             return
         }
         let formatted = Self.sentencePerLine(trimmed)
+
+        // The authoritative transcript has landed; drop the live preview.
+        clearLivePreview()
 
         // Lazily create the conversation on first speech, then record the turn.
         let conversation = ensureConversation()

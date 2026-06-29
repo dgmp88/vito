@@ -1,3 +1,4 @@
+import AVFoundation
 import FluidAudio
 import Foundation
 import os
@@ -19,6 +20,15 @@ actor Transcriber {
 
     private let logger = Logger(subsystem: "com.gerg.vito", category: "Transcriber")
     private var manager: AsrManager?
+
+    /// The loaded model bundle, retained so the live streaming recognizer can
+    /// reuse it instead of triggering a second download/load.
+    private var models: AsrModels?
+
+    /// Active live-preview recognizer, when recording. Distinct from `manager`:
+    /// it shares the same model weights but keeps cache-aware sliding-window
+    /// state. The authoritative transcript still comes from `transcribe(fileURL:)`.
+    private var stream: SlidingWindowAsrManager?
 
     /// Downloads (if needed) and loads the model into memory.
     /// `onProgress` reports a status message plus a 0…1 fraction when one is
@@ -51,7 +61,54 @@ actor Transcriber {
         let manager = AsrManager(config: .default)
         try await manager.loadModels(models)
         self.manager = manager
+        self.models = models
         logger.notice("Parakeet ready")
+    }
+
+    // MARK: - Live streaming (preview)
+
+    /// Window settings for the live preview. The recognizer only emits an update
+    /// once it has `chunkSeconds + rightContextSeconds` of audio buffered and
+    /// then advances one chunk at a time — FluidAudio's `.streaming` preset
+    /// (11s + 2s) means no text appears until 13s in, and its `hypothesisChunk`
+    /// "quick feedback" field is unused. We use a small window so the first words
+    /// show in ~2.5s and refresh roughly every 2s. Lower per-window context than
+    /// the offline pass, but this is only a preview — `transcribe(fileURL:)`
+    /// produces the committed transcript.
+    private static let livePreviewConfig = SlidingWindowAsrConfig(
+        chunkSeconds: 2.0,
+        hypothesisChunkSeconds: 1.0,
+        leftContextSeconds: 4.0,
+        rightContextSeconds: 0.5,
+        minContextForConfirmation: 3.0,
+        confirmationThreshold: 0.80
+    )
+
+    /// Begins a live, sliding-window transcription session reusing the loaded
+    /// model, and returns the stream of partial updates. Each update carries
+    /// `isConfirmed` (stable text) vs. volatile (may still change) so the UI can
+    /// render the unstable tail differently. This is a best-effort preview; the
+    /// committed transcript is produced by `transcribe(fileURL:)` after Stop.
+    func beginStreaming() async throws -> AsyncStream<SlidingWindowTranscriptionUpdate> {
+        guard let models else { throw TranscriberError.notReady }
+        let stream = SlidingWindowAsrManager(config: Self.livePreviewConfig)
+        // Access `transcriptionUpdates` first so the continuation is registered
+        // before any audio is fed in — otherwise early updates are dropped.
+        let updates = await stream.transcriptionUpdates
+        try await stream.start(models: models, source: .microphone)
+        self.stream = stream
+        return updates
+    }
+
+    /// Feeds one captured buffer to the live recognizer. No-op if not streaming.
+    func streamAudio(_ buffer: AVAudioPCMBuffer) async {
+        await stream?.streamAudio(buffer)
+    }
+
+    /// Tears down the live recognizer without waiting for a final result.
+    func cancelStreaming() async {
+        await stream?.cancel()
+        stream = nil
     }
 
     /// Transcribes a recorded audio file. FluidAudio handles resampling to 16 kHz mono.

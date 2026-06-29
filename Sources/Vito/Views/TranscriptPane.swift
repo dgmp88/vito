@@ -5,11 +5,13 @@ struct TranscriptPane: View {
     @Environment(AppState.self) private var state
     private static let thinkingID = "thinking-row"
 
+    private static let liveID = "live-row"
+
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
             PaneHeader(title: "Transcript", systemImage: "waveform")
 
-            if state.transcript.isEmpty {
+            if state.transcript.isEmpty && !state.hasLivePreview {
                 emptyState
             } else {
                 ScrollViewReader { proxy in
@@ -17,6 +19,9 @@ struct TranscriptPane: View {
                         LazyVStack(alignment: .leading, spacing: 14) {
                             ForEach(state.transcript) { entry in
                                 EntryRow(entry: entry).id(entry.id)
+                            }
+                            if state.hasLivePreview {
+                                LiveRow().id(Self.liveID)
                             }
                             if state.phase == .updatingDocument {
                                 ThinkingRow().id(Self.thinkingID)
@@ -28,6 +33,9 @@ struct TranscriptPane: View {
                         if let last = state.transcript.last {
                             withAnimation { proxy.scrollTo(last.id, anchor: .bottom) }
                         }
+                    }
+                    .onChange(of: state.liveVolatile) {
+                        withAnimation { proxy.scrollTo(Self.liveID, anchor: .bottom) }
                     }
                     .onChange(of: state.streamedText) {
                         withAnimation { proxy.scrollTo(Self.thinkingID, anchor: .bottom) }
@@ -62,6 +70,31 @@ private struct EntryRow: View {
                 .textSelection(.enabled)
                 .frame(maxWidth: .infinity, alignment: .leading)
         }
+    }
+}
+
+/// Live speech preview shown while recording (and during the final pass): the
+/// confirmed text in the normal color, with the still-volatile tail rendered
+/// slightly lighter since it may still change.
+private struct LiveRow: View {
+    @Environment(AppState.self) private var state
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 4) {
+            Text("You")
+                .font(.caption.weight(.semibold))
+                .foregroundStyle(.secondary)
+            (Text(state.liveConfirmed)
+                + Text(needsSpace ? " " : "")
+                + Text(state.liveVolatile).foregroundStyle(.tertiary))
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
+    }
+
+    /// A separator between the confirmed text and the volatile tail, only when
+    /// both are present.
+    private var needsSpace: Bool {
+        !state.liveConfirmed.isEmpty && !state.liveVolatile.isEmpty
     }
 }
 
