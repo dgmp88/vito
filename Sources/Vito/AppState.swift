@@ -195,13 +195,14 @@ final class AppState {
             phase = .idle
             return
         }
+        let formatted = Self.sentencePerLine(trimmed)
 
         // Lazily create the conversation on first speech, then record the turn.
         let conversation = ensureConversation()
         if conversation.title.isEmpty {
-            conversation.title = Self.makeTitle(from: trimmed)
+            conversation.title = Self.makeTitle(from: formatted)
         }
-        append(ChatMessage(role: "user", content: trimmed), to: conversation)
+        append(ChatMessage(role: "user", content: formatted), to: conversation)
 
         // 2. Text → LLM, sending the full history for multi-turn context.
         phase = .updatingDocument
@@ -255,6 +256,14 @@ final class AppState {
         stored.conversation = conversation
         conversation.messages.append(stored)
         modelContext.insert(stored)
+    }
+
+    /// Puts each sentence on its own line by following a sentence-ending period
+    /// with a newline. Only breaks when the period is followed by whitespace, so
+    /// decimals ("3.5") and abbreviations without a trailing space stay intact.
+    private static func sentencePerLine(_ text: String) -> String {
+        text.replacingOccurrences(
+            of: #"\.[ \t]+"#, with: ".\n", options: .regularExpression)
     }
 
     /// First line of the first utterance, trimmed to a short title.
