@@ -41,6 +41,11 @@ struct VitoApp: App {
         .windowResizability(.contentMinSize)
         .modelContainer(container)
         .commands {
+            // ⌘N starts a new chat, replacing the default "New" item.
+            CommandGroup(replacing: .newItem) {
+                Button("New Chat") { state.newConversation() }
+                    .keyboardShortcut("n", modifiers: .command)
+            }
             // ⌘, opens settings via the standard menu item (handled in ContentView).
         }
     }
