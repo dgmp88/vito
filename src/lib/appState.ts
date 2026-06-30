@@ -14,7 +14,7 @@ import {
 } from "./store";
 import { titleFromUtterance } from "./types";
 
-export type Phase = "idle" | "recording" | "responding" | "error";
+export type Phase = "idle" | "connecting" | "recording" | "transcribing" | "responding" | "error";
 
 const [phase, setPhase] = createSignal<Phase>("idle");
 const [errorMessage, setErrorMessage] = createSignal("");
@@ -46,12 +46,15 @@ export function isRecording(): boolean {
 }
 
 export function isBusy(): boolean {
-  return phase() === "responding";
+  return phase() === "connecting" || phase() === "transcribing" || phase() === "responding";
 }
 
 /** True while a live preview is worth showing and some text has arrived. */
 export function hasLivePreview(): boolean {
-  return phase() === "recording" && !(liveConfirmed() === "" && liveVolatile() === "");
+  return (
+    (phase() === "recording" || phase() === "transcribing") &&
+    !(liveConfirmed() === "" && liveVolatile() === "")
+  );
 }
 
 export function toggleRecording(): void {
@@ -73,6 +76,7 @@ async function startRecording(): Promise<void> {
   setLiveConfirmed("");
   setLiveVolatile("");
   transcriber = new RealtimeTranscriber();
+  setPhase("connecting");
   try {
     await transcriber.start({
       onFinal: text => {
@@ -81,19 +85,31 @@ async function startRecording(): Promise<void> {
         setLiveVolatile("");
       },
       onPartial: text => setLiveVolatile(text),
-      onError: message => fail("Transcription error", message),
+      onError: message => {
+        transcriber?.cancel();
+        transcriber = undefined;
+        fail("Transcription error", message);
+      },
     });
     setPhase("recording");
   } catch (error) {
-    transcriber?.stop();
+    transcriber?.cancel();
     transcriber = undefined;
     fail("Couldn't start recording", (error as Error).message);
   }
 }
 
 async function stopAndProcess(): Promise<void> {
-  transcriber?.stop();
+  const activeTranscriber = transcriber;
   transcriber = undefined;
+  setPhase("transcribing");
+  try {
+    await activeTranscriber?.stop();
+  } catch (error) {
+    activeTranscriber?.cancel();
+    fail("Transcription error", (error as Error).message);
+    return;
+  }
 
   const spoken = [liveConfirmed(), liveVolatile()]
     .filter(Boolean)

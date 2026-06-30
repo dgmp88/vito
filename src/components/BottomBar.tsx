@@ -18,8 +18,12 @@ export default function BottomBar() {
 
   const statusText = () => {
     switch (phase()) {
+      case "connecting":
+        return "Connecting…";
       case "recording":
         return "Listening…";
+      case "transcribing":
+        return "Transcribing…";
       case "responding": {
         const verb = isWritingDocument() ? "Writing" : "Thinking";
         return streamedTokens() > 0 ? `${verb}… ${streamedTokens()} tokens` : `${verb}…`;
@@ -31,6 +35,19 @@ export default function BottomBar() {
     }
   };
 
+  const recordLabel = () => {
+    switch (phase()) {
+      case "connecting":
+        return "Starting";
+      case "recording":
+        return "Stop";
+      case "transcribing":
+        return "Finishing";
+      default:
+        return "Record";
+    }
+  };
+
   return (
     <div class="bottom-bar">
       <button
@@ -39,7 +56,7 @@ export default function BottomBar() {
         disabled={isBusy()}
       >
         <span classList={{ "record-dot": true, "record-dot--pulse": isRecording() }} />
-        {isRecording() ? "Stop" : "Record"}
+        {recordLabel()}
       </button>
 
       <span classList={{ status: true, "status--error": phase() === "error" }}>

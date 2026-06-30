@@ -1,11 +1,13 @@
-// Sends the conversation history to /api/chat (which proxies GPT-5.5) and consumes
-// the streamed SSE response, accumulating the assistant's text reply and any
-// `write_document` tool call. Mirrors the native app's DocumentAgent.
+// Sends the conversation history to a SolidStart server function that proxies
+// GPT-5.5, then consumes the streamed SSE response, accumulating the assistant's
+// text reply and any `write_document` tool call. Mirrors the native app's
+// DocumentAgent.
 //
 // Returns the new message(s) to append, in OpenAI shape: an assistant text reply,
 // or an assistant tool call plus the required `tool`-role response so the next
 // request stays protocol-valid.
 
+import { streamChatCompletion } from "./openaiServer";
 import type { ChatMessage, ToolCall } from "./types";
 import { WRITE_DOCUMENT_TOOL } from "./types";
 
@@ -24,14 +26,20 @@ interface PartialToolCall {
   args: string;
 }
 
+type RawServerFunction = {
+  url: string;
+};
+
 export async function respond(
   history: ChatMessage[],
   onProgress: (progress: AgentProgress) => void
 ): Promise<ChatMessage[]> {
-  const res = await fetch("/api/chat", {
+  const streamChatUrl = (streamChatCompletion as typeof streamChatCompletion & RawServerFunction)
+    .url;
+  const res = await fetch(streamChatUrl, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ messages: history }),
+    body: JSON.stringify([history]),
   });
 
   if (!res.ok || !res.body) {

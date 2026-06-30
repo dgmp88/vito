@@ -13,3 +13,7 @@ node_modules/
 
 # macOS
 .DS_Store
+
+.build/
+Package.resolved
+example_apps/

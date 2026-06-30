@@ -30,13 +30,14 @@ aesthetic — built on SolidStart with OpenAI's realtime transcription and GPT-5
 ### Where the API key lives
 
 The OpenAI key is **server-side only** (`OPENAI_API_KEY`). The browser never
-sees it. Two server routes use it:
+sees it. Two SolidStart server functions in `src/lib/openaiServer.ts` use it:
 
-- `POST /api/realtime-token` — mints a short-lived ephemeral client secret for
-  the transcription session. The browser uses that secret (not your key) to open
-  the WebRTC connection.
-- `POST /api/chat` — proxies the streaming chat completion, attaching the system
-  prompt and `write_document` tool, and pipes the SSE stream back to the browser.
+- `createRealtimeTranscriptionToken()` mints a short-lived ephemeral client
+  secret for the transcription session. The browser uses that secret (not your
+  key) to open the WebRTC connection.
+- `streamChatCompletion()` proxies the streaming chat completion, attaching the
+  system prompt and `write_document` tool, and pipes the SSE stream back to the
+  browser through SolidStart's generated server-function endpoint.
 
 ## Running
 
@@ -84,9 +85,8 @@ src/
   entry-client.tsx / entry-server.tsx
   routes/
     index.tsx                # the whole app: sidebar + two panes + bottom bar
-    api/realtime-token.ts    # mints the ephemeral transcription token
-    api/chat.ts              # streams the gpt-5.5 chat completion + write_document tool
   lib/
+    openaiServer.ts          # server functions for token minting + chat streaming
     types.ts                 # OAI-shaped Conversation/Message + document/transcript derivations
     store.ts                 # reactive store + localStorage persistence
     appState.ts              # phase orchestration: record → transcribe → respond
