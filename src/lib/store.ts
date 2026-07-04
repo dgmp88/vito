@@ -49,9 +49,13 @@ export function selectedConversation(): Conversation | undefined {
 let writeChain: Promise<unknown> = Promise.resolve();
 
 function remoteWrite(op: (token: string) => Promise<void>): void {
+  // Capture the token now, when the mutation happens, so the write stays bound to
+  // the session that made it — signing out or switching accounts before the queue
+  // drains can't misattribute an earlier user's write to a later one.
+  const tokenPromise = authToken();
   writeChain = writeChain
     .then(async () => {
-      const token = await authToken();
+      const token = await tokenPromise;
       if (!token) return; // Not signed in — nothing to scope the write to.
       await op(token);
     })
@@ -64,7 +68,14 @@ export async function loadConversations(): Promise<void> {
   try {
     const token = await authToken();
     if (!token) return; // No user — nothing persisted to load.
-    setStore("conversations", await remote.fetchConversations(token));
+    const fetched = await remote.fetchConversations(token);
+    // Merge rather than replace: the UI is interactive while this loads, so a
+    // conversation or turn created before the fetch resolves is already in the
+    // store. Local (optimistic) entries win; only add DB rows we don't have.
+    setStore("conversations", current => {
+      const localIds = new Set(current.map(c => c.id));
+      return [...current, ...fetched.filter(c => !localIds.has(c.id))];
+    });
   } catch (error) {
     console.error("[store] failed to load conversations:", error);
   }

@@ -147,9 +147,15 @@ export async function appendMessages(
   `;
 
   if (document !== null) {
+    // Guarded like the message insert above: the row is only proposed when the
+    // conversation belongs to this user, so ON CONFLICT can never overwrite
+    // another user's document row.
     await sql`
       INSERT INTO documents (conversation_id, user_id, content, updated_at)
-      VALUES (${conversationId}, ${userId}, ${document}, ${updatedAt})
+      SELECT ${conversationId}, ${userId}, ${document}, ${updatedAt}
+      WHERE EXISTS (
+        SELECT 1 FROM conversations WHERE id = ${conversationId} AND user_id = ${userId}
+      )
       ON CONFLICT (conversation_id)
       DO UPDATE SET content = EXCLUDED.content, updated_at = EXCLUDED.updated_at
     `;
