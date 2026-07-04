@@ -1,4 +1,4 @@
-// Server-only. Neon Postgres client plus a lazy, idempotent schema bootstrap.
+// Server-only. Neon Postgres client plus a small migration runner.
 //
 // The connection string lives in `DATABASE_URL` (server secret, never exposed to
 // the browser). We use the neon() HTTP driver — no pooling to manage, ideal for
@@ -23,68 +23,68 @@ export function getSql(): Sql {
   return sql;
 }
 
-// Run the schema creation once per server process. On failure we clear the cached
-// promise so a later request can retry rather than being stuck with a rejection.
-let schemaReady: Promise<void> | undefined;
+// SQL files in /migrations, inlined at build time and keyed by path. Sorting by
+// the `{date}_{time}_{name}.sql` filename gives chronological apply order.
+const migrationScripts = import.meta.glob("../../migrations/*.sql", {
+  query: "?raw",
+  import: "default",
+  eager: true,
+}) as Record<string, string>;
 
-export function ensureSchema(): Promise<void> {
-  if (!schemaReady) {
-    schemaReady = createSchema().catch(error => {
-      schemaReady = undefined;
+// Run pending migrations once per server process. On failure we clear the cached
+// promise so a later request can retry rather than being stuck with a rejection.
+let migrated: Promise<void> | undefined;
+
+export function runMigrations(): Promise<void> {
+  if (!migrated) {
+    migrated = migrate().catch(error => {
+      migrated = undefined;
       throw error;
     });
   }
-  return schemaReady;
+  return migrated;
 }
 
-async function createSchema(): Promise<void> {
+async function migrate(): Promise<void> {
   const sql = getSql();
 
-  // Conversations: one row per chat, scoped to the Neon Auth user.
+  // Track which migrations have run so each applies exactly once.
   await sql`
-    CREATE TABLE IF NOT EXISTS conversations (
-      id         text PRIMARY KEY,
-      user_id    text NOT NULL,
-      title      text NOT NULL DEFAULT '',
-      created_at timestamptz NOT NULL DEFAULT now(),
-      updated_at timestamptz NOT NULL DEFAULT now()
+    CREATE TABLE IF NOT EXISTS schema_migrations (
+      name       text PRIMARY KEY,
+      applied_at timestamptz NOT NULL DEFAULT now()
     )
   `;
-  await sql`
-    CREATE INDEX IF NOT EXISTS conversations_user_updated_idx
-      ON conversations (user_id, updated_at DESC)
-  `;
+  const rows = (await sql`SELECT name FROM schema_migrations`) as { name: string }[];
+  const applied = new Set(rows.map(row => row.name));
 
-  // Messages: OpenAI chat-completions shape. `seq` gives a stable per-insert
-  // ordering; `tool_calls` holds the spec JSON (arguments stay a JSON string).
-  await sql`
-    CREATE TABLE IF NOT EXISTS messages (
-      seq             bigserial PRIMARY KEY,
-      conversation_id text NOT NULL REFERENCES conversations (id) ON DELETE CASCADE,
-      user_id         text NOT NULL,
-      role            text NOT NULL,
-      content         text,
-      tool_calls      jsonb,
-      tool_call_id    text,
-      created_at      timestamptz NOT NULL DEFAULT now()
-    )
-  `;
-  await sql`
-    CREATE INDEX IF NOT EXISTS messages_conversation_seq_idx
-      ON messages (conversation_id, seq)
-  `;
+  const pending = Object.entries(migrationScripts)
+    .map(([path, script]) => ({ name: path.split("/").pop()!, script }))
+    .filter(migration => !applied.has(migration.name))
+    .sort((a, b) => a.name.localeCompare(b.name));
 
-  // Documents: the current markdown per conversation — a materialized projection
-  // of the latest write_document tool call. One row per conversation, upserted.
-  await sql`
-    CREATE TABLE IF NOT EXISTS documents (
-      conversation_id text PRIMARY KEY REFERENCES conversations (id) ON DELETE CASCADE,
-      user_id         text NOT NULL,
-      content         text NOT NULL DEFAULT '',
-      updated_at      timestamptz NOT NULL DEFAULT now()
-    )
-  `;
-  await sql`
-    CREATE INDEX IF NOT EXISTS documents_user_idx ON documents (user_id)
-  `;
+  for (const { name, script } of pending) {
+    const statements = splitStatements(script);
+    // Each migration runs as one transaction: all its statements plus the record
+    // of having applied it commit together, so a failure never half-applies.
+    await sql.transaction(txn => [
+      ...statements.map(statement => txn.query(statement)),
+      txn`INSERT INTO schema_migrations (name) VALUES (${name})`,
+    ]);
+  }
+}
+
+/**
+ * Split a migration file into individual statements. The neon HTTP driver runs
+ * one command per query, so we strip line comments and split on semicolons —
+ * fine for our DDL, which has no semicolons inside statement bodies.
+ */
+function splitStatements(script: string): string[] {
+  return script
+    .split("\n")
+    .filter(line => !line.trim().startsWith("--"))
+    .join("\n")
+    .split(";")
+    .map(statement => statement.trim())
+    .filter(Boolean);
 }

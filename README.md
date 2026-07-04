@@ -96,11 +96,15 @@ managed client-side by the SDK.
 The browser gets a short-lived session **JWT** from the Neon Auth SDK and passes
 it to each persistence server function in `src/lib/dbServer.ts`. The server
 verifies that token's signature against Neon Auth's JWKS
-(`<VITE_NEON_AUTH_URL>/jwks`, overridable with `NEON_JWKS_URL`) and reads the
-`sub` claim — the id from `neon_auth.user`. Every read and write is scoped to
+(`<VITE_NEON_AUTH_URL>/.well-known/jwks.json`) and checks the issuer, then reads
+the `sub` claim — the id from `neon_auth.user`. Every read and write is scoped to
 that user id, so the `DATABASE_URL` and verification key never leave the server.
-The schema is created lazily on first use (`CREATE TABLE IF NOT EXISTS`), so no
-separate migration step is needed for the spike.
+
+The schema lives in `migrations/` as timestamped `.sql` files
+(`{date}_{time}_{name}.sql`). On first database use the server applies any that
+haven't run yet, in filename order, each in its own transaction and recorded in a
+`schema_migrations` table — so no separate migration command is needed. To evolve
+the schema, add a new file to `migrations/`.
 
 ## Data model
 
@@ -146,7 +150,7 @@ src/
     openaiServer.ts          # server functions for token minting + chat streaming
     auth.ts                  # Neon Auth client + session signals (sign in/up/out) + JWT
     authServer.ts            # server-side JWT verification (JWKS → user id)
-    db.ts                    # Neon Postgres client + lazy schema bootstrap
+    db.ts                    # Neon Postgres client + migration runner (migrations/*.sql)
     dbServer.ts              # per-user CRUD server functions (conversations/messages/documents)
     types.ts                 # OAI-shaped Conversation/Message + document/transcript derivations
     store.ts                 # reactive store + Neon/localStorage persistence
