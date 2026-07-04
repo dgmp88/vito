@@ -60,6 +60,28 @@ build), `npm run typecheck`.
 Optional env overrides: `VITO_TRANSCRIBE_MODEL` (default `gpt-realtime-whisper`),
 `VITO_CHAT_MODEL` (default `gpt-5.5`).
 
+## Auth (optional)
+
+Email + password login via [Neon Auth](https://neon.com/docs/auth/overview),
+using the `@neondatabase/auth` SDK (Better Auth under the hood). To enable it:
+
+1. Create a Neon project and enable **Auth** in the Neon Console.
+2. Copy the **Auth Base URL** (Console → your project → Auth) into `.env`:
+
+   ```bash
+   VITE_NEON_AUTH_URL=https://ep-xxx.neonauth.us-east-2.aws.neon.build/neondb/auth
+   ```
+
+3. Restart the dev server. The app now shows a sign-in / sign-up screen and a
+   sign-out button in the sidebar. Users are synced to the `neon_auth.user`
+   table in your Neon database.
+
+If `VITE_NEON_AUTH_URL` is unset, the login screen is skipped entirely and the
+app behaves as before. The URL is a public endpoint (hence the `VITE_` prefix
+exposing it to the browser); sessions are managed client-side by the SDK.
+Conversations still live in localStorage — auth gates access to the app but
+doesn't (yet) move data server-side.
+
 ## Data model
 
 Conversations are stored in the **OpenAI chat-completions shape** so the message
@@ -87,12 +109,14 @@ src/
     index.tsx                # the whole app: sidebar + two panes + bottom bar
   lib/
     openaiServer.ts          # server functions for token minting + chat streaming
+    auth.ts                  # Neon Auth client + session signals (sign in/up/out)
     types.ts                 # OAI-shaped Conversation/Message + document/transcript derivations
     store.ts                 # reactive store + localStorage persistence
     appState.ts              # phase orchestration: record → transcribe → respond
     realtime.ts              # WebRTC transcription client (mic → OpenAI → events)
     agent.ts                 # chat SSE consumer (text + write_document accumulation)
   components/
+    AuthGate.tsx             # login screen; renders the app once signed in
     Sidebar.tsx  TranscriptPane.tsx  DocumentPane.tsx  BottomBar.tsx
 public/logo.svg              # app mark / favicon
 ```

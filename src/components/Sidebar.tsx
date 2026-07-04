@@ -1,6 +1,7 @@
 import { For, Show } from "solid-js";
 import { newConversation, selectConversation, sortedConversations, store } from "~/lib/store";
 import { clearError, isBusy } from "~/lib/appState";
+import { authUser, signOut } from "~/lib/auth";
 
 export default function Sidebar() {
   const handleNew = () => {
@@ -47,6 +48,19 @@ export default function Sidebar() {
           </For>
         </Show>
       </div>
+
+      <Show when={authUser()}>
+        {user => (
+          <div class="sidebar__account">
+            <span class="sidebar__user" title={user().email}>
+              {user().name || user().email}
+            </span>
+            <button class="sidebar__signout" onClick={() => void signOut()}>
+              Sign out
+            </button>
+          </div>
+        )}
+      </Show>
     </aside>
   );
 }
