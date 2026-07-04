@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512" width="100%" height="100%">
+  <defs>
+    <!-- Forest Green Background Gradient -->
+    <linearGradient id="bgGrad" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#2D6A4F" />
+      <stop offset="50%" stop-color="#1B4332" />
+      <stop offset="100%" stop-color="#081C15" />
+    </linearGradient>
+
+    <!-- Subtle Drop Shadow for the Waveform -->
+    <filter id="shadow" x="-10%" y="-10%" width="120%" height="120%">
+      <feDropShadow dx="0" dy="8" stdDeviation="8" flood-color="#000000" flood-opacity="0.25"/>
+    </filter>
+  </defs>
+
+  <!-- App Icon Base (Squircle) -->
+  <rect width="512" height="512" rx="115" fill="url(#bgGrad)" />
+
+  <!-- Waveform 'V' -->
+  <!-- 
+    The bars are perfectly spaced and their heights/positions shift linearly 
+    to create a sharp, distinct 'V' shape while maintaining an audio waveform aesthetic. 
+  -->
+  <g filter="url(#shadow)" fill="#FFFFFF">
+    
+    <!-- Left side of V -->
+    <rect x="60"  y="82"  width="32" height="172" rx="16" />
+    <rect x="120" y="164" width="32" height="136" rx="16" />
+    <rect x="180" y="246" width="32" height="100" rx="16" />
+    
+    <!-- Center Point of V -->
+    <rect x="240" y="328" width="32" height="64"  rx="16" />
+    
+    <!-- Right side of V -->
+    <rect x="300" y="246" width="32" height="100" rx="16" />
+    <rect x="360" y="164" width="32" height="136" rx="16" />
+    <rect x="420" y="82"  width="32" height="172" rx="16" />
+    
+  </g>
+</svg>
