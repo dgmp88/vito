@@ -1,9 +1,9 @@
 import { createStore, produce } from "solid-js/store";
-import { createEffect } from "solid-js";
 import { isServer } from "solid-js/web";
 import type { ChatMessage, Conversation } from "./types";
-
-const STORAGE_KEY = "vito.conversations.v1";
+import { markdownFromToolCalls } from "./types";
+import { authToken } from "./auth";
+import * as remote from "./dbServer";
 
 interface StoreShape {
   conversations: Conversation[];
@@ -35,32 +35,50 @@ export function selectedConversation(): Conversation | undefined {
   return store.conversations.find(c => c.id === store.selectedId);
 }
 
-// MARK: - Persistence (localStorage). Load once on mount, then autosave on change.
+// MARK: - Persistence
+//
+// Conversations are persisted to Neon Postgres, per user, via the server
+// functions in dbServer.ts. Mutations update the in-memory reactive store
+// synchronously — the UI stays snappy — and are written through to Neon in the
+// background. Without a signed-in user (Neon Auth disabled) there's no backend,
+// so conversations live only in memory for the session.
 
-export function loadFromStorage(): void {
-  if (isServer) return;
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as Conversation[];
-    if (Array.isArray(parsed)) setStore("conversations", parsed);
-  } catch {
-    // Corrupt storage — start fresh rather than crash.
-  }
+// Remote writes run through a promise chain so they land in program order (a
+// conversation is created before its messages are appended). Failures are logged,
+// not fatal: the optimistic in-memory state is what the user sees.
+let writeChain: Promise<unknown> = Promise.resolve();
+
+function remoteWrite(op: (token: string) => Promise<void>): void {
+  // Capture the token now, when the mutation happens, so the write stays bound to
+  // the session that made it — signing out or switching accounts before the queue
+  // drains can't misattribute an earlier user's write to a later one.
+  const tokenPromise = authToken();
+  writeChain = writeChain
+    .then(async () => {
+      const token = await tokenPromise;
+      if (!token) return; // Not signed in — nothing to scope the write to.
+      await op(token);
+    })
+    .catch(error => console.error("[store] remote write failed:", error));
 }
 
-/** Wire up autosave. Call inside a component's onMount so the effect has an owner. */
-export function setupPersistence(): void {
+/** Load the signed-in user's conversations from Neon. Call on mount. */
+export async function loadConversations(): Promise<void> {
   if (isServer) return;
-  createEffect(() => {
-    // Touch the field so the effect tracks it, then serialize.
-    const snapshot = store.conversations;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-    } catch {
-      // Quota or serialization failure — non-fatal for a local spike.
-    }
-  });
+  try {
+    const token = await authToken();
+    if (!token) return; // No user — nothing persisted to load.
+    const fetched = await remote.fetchConversations(token);
+    // Merge rather than replace: the UI is interactive while this loads, so a
+    // conversation or turn created before the fetch resolves is already in the
+    // store. Local (optimistic) entries win; only add DB rows we don't have.
+    setStore("conversations", current => {
+      const localIds = new Set(current.map(c => c.id));
+      return [...current, ...fetched.filter(c => !localIds.has(c.id))];
+    });
+  } catch (error) {
+    console.error("[store] failed to load conversations:", error);
+  }
 }
 
 // MARK: - Conversation management
@@ -81,6 +99,7 @@ export function deleteConversation(id: string): void {
       if (s.selectedId === id) s.selectedId = null;
     })
   );
+  remoteWrite(token => remote.deleteConversation(token, id));
 }
 
 /** Returns the selected conversation, lazily creating one on first speech. */
@@ -101,18 +120,34 @@ export function ensureConversation(): Conversation {
       s.selectedId = conversation.id;
     })
   );
+  remoteWrite(token =>
+    remote.createConversation(token, {
+      id: conversation.id,
+      title: conversation.title,
+      createdAt: conversation.createdAt,
+      updatedAt: conversation.updatedAt,
+    })
+  );
   return conversation;
 }
 
 export function appendMessages(conversationId: string, messages: ChatMessage[]): void {
+  const updatedAt = new Date().toISOString();
   setStore(
     produce(s => {
       const conversation = s.conversations.find(c => c.id === conversationId);
       if (!conversation) return;
       conversation.messages.push(...messages);
-      conversation.updatedAt = new Date().toISOString();
+      conversation.updatedAt = updatedAt;
     })
   );
+  // If this batch wrote the document, carry its markdown to the documents table.
+  let document: string | null = null;
+  for (const message of messages) {
+    const markdown = markdownFromToolCalls(message.tool_calls);
+    if (markdown !== null) document = markdown;
+  }
+  remoteWrite(token => remote.appendMessages(token, conversationId, messages, updatedAt, document));
 }
 
 export function setConversationTitle(conversationId: string, title: string): void {
@@ -122,4 +157,5 @@ export function setConversationTitle(conversationId: string, title: string): voi
       if (conversation) conversation.title = title;
     })
   );
+  remoteWrite(token => remote.setConversationTitle(token, conversationId, title));
 }
