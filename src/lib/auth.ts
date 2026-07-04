@@ -1,4 +1,4 @@
-import { createAuthClient } from "@neondatabase/auth";
+import { createInternalNeonAuth } from "@neondatabase/auth";
 import { createSignal } from "solid-js";
 
 // Neon Auth (https://neon.com/docs/auth/overview), email + password.
@@ -48,11 +48,38 @@ interface NeonAuthClient {
   signOut(): Promise<unknown>;
 }
 
-let client: NeonAuthClient | undefined;
+// createInternalNeonAuth returns both the Better Auth client (`.adapter`, used
+// for sign in/up/session/out) and `getJWTToken()`, the source of the session JWT
+// we send to the persistence server functions. `createAuthClient` exposes only
+// the adapter, so we go one level up.
+interface NeonAuth {
+  adapter: NeonAuthClient;
+  getJWTToken(): Promise<string | null>;
+}
+
+let instance: NeonAuth | undefined;
+
+function neon(): NeonAuth {
+  if (!instance) instance = createInternalNeonAuth(authUrl!) as unknown as NeonAuth;
+  return instance;
+}
 
 function auth(): NeonAuthClient {
-  if (!client) client = createAuthClient(authUrl!) as unknown as NeonAuthClient;
-  return client;
+  return neon().adapter;
+}
+
+/**
+ * The current session's JWT, or null when auth is disabled or nobody is signed
+ * in. The persistence layer passes this to the server, which verifies it and
+ * scopes every query to the user.
+ */
+export async function authToken(): Promise<string | null> {
+  if (!authEnabled) return null;
+  try {
+    return await neon().getJWTToken();
+  } catch {
+    return null;
+  }
 }
 
 const [user, setUser] = createSignal<AuthUser | null>(null);
