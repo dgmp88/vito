@@ -5,7 +5,7 @@ import TranscriptPane from "~/components/TranscriptPane";
 import DocumentPane from "~/components/DocumentPane";
 import BottomBar from "~/components/BottomBar";
 import { loadSession } from "~/lib/auth";
-import { loadConversations, newConversation, setupPersistence } from "~/lib/store";
+import { loadConversations, newConversation } from "~/lib/store";
 import { clearError, isBusy, toggleRecording } from "~/lib/appState";
 
 export default function Home() {
@@ -21,7 +21,6 @@ export default function Home() {
 function Workspace() {
   onMount(() => {
     void loadConversations();
-    setupPersistence();
 
     const onKeyDown = (e: KeyboardEvent) => {
       // Ignore shortcuts while typing in a form field.

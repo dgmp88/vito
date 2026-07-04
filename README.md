@@ -24,8 +24,7 @@ aesthetic — built on SolidStart with OpenAI's realtime transcription and GPT-5
   on a data channel.
 - **LLM**: OpenAI `gpt-5.5` via `/chat/completions`, streamed, multi-turn, with
   a `write_document` tool.
-- **State**: conversations persisted to **Neon Postgres** (per user) when Neon
-  Auth is enabled, or **localStorage** in the no-login dev mode — both in the
+- **State**: conversations persisted to **Neon Postgres** (per user), in the
   OpenAI chat-completions shape (see [Data model](#data-model)).
 
 ### Where the API key lives
@@ -87,9 +86,10 @@ using the `@neondatabase/auth` SDK (Better Auth under the hood). To enable it:
    documents are persisted to Postgres (see [Data model](#data-model)).
 
 If `VITE_NEON_AUTH_URL` is unset, the login screen is skipped entirely and the
-app behaves as before, keeping conversations in localStorage. The URL is a
-public endpoint (hence the `VITE_` prefix exposing it to the browser); sessions
-are managed client-side by the SDK.
+app runs without login; with no signed-in user there's no persistence backend,
+so conversations live only in memory for the session. The URL is a public
+endpoint (hence the `VITE_` prefix exposing it to the browser); sessions are
+managed client-side by the SDK.
 
 ### How persistence is authenticated
 
@@ -129,9 +129,9 @@ all carrying the owning `user_id` (from `neon_auth.user`):
   projection of the latest `write_document` call, upserted whenever the document
   changes; the transcript panes still read from `messages`.
 
-In the no-login dev mode the same records are serialized to `localStorage`
-instead. Loading decodes rows back into `Conversation[]`; mutations update the
-in-memory store immediately and write through to Postgres in the background.
+Loading decodes rows back into `Conversation[]`; mutations update the in-memory
+store immediately and write through to Postgres in the background. Without a
+signed-in user there's no backend, so conversations are kept only in memory.
 
 ## Layout
 

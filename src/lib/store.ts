@@ -1,12 +1,9 @@
 import { createStore, produce } from "solid-js/store";
-import { createEffect } from "solid-js";
 import { isServer } from "solid-js/web";
 import type { ChatMessage, Conversation } from "./types";
 import { markdownFromToolCalls } from "./types";
-import { authEnabled, authToken } from "./auth";
+import { authToken } from "./auth";
 import * as remote from "./dbServer";
-
-const STORAGE_KEY = "vito.conversations.v1";
 
 interface StoreShape {
   conversations: Conversation[];
@@ -40,11 +37,11 @@ export function selectedConversation(): Conversation | undefined {
 
 // MARK: - Persistence
 //
-// Two backends behind one in-memory reactive store. When Neon Auth is enabled we
-// persist to Neon Postgres, per-user, via the server functions in dbServer.ts.
-// When it isn't (the no-login dev mode), we fall back to localStorage exactly as
-// before. Mutations always update the in-memory store synchronously — the UI
-// stays snappy — and the chosen backend is written through in the background.
+// Conversations are persisted to Neon Postgres, per user, via the server
+// functions in dbServer.ts. Mutations update the in-memory reactive store
+// synchronously — the UI stays snappy — and are written through to Neon in the
+// background. Without a signed-in user (Neon Auth disabled) there's no backend,
+// so conversations live only in memory for the session.
 
 // Remote writes run through a promise chain so they land in program order (a
 // conversation is created before its messages are appended). Failures are logged,
@@ -52,7 +49,6 @@ export function selectedConversation(): Conversation | undefined {
 let writeChain: Promise<unknown> = Promise.resolve();
 
 function remoteWrite(op: (token: string) => Promise<void>): void {
-  if (!authEnabled) return;
   writeChain = writeChain
     .then(async () => {
       const token = await authToken();
@@ -62,44 +58,16 @@ function remoteWrite(op: (token: string) => Promise<void>): void {
     .catch(error => console.error("[store] remote write failed:", error));
 }
 
-/** Load conversations for the current backend. Call on mount. */
+/** Load the signed-in user's conversations from Neon. Call on mount. */
 export async function loadConversations(): Promise<void> {
   if (isServer) return;
-  if (!authEnabled) {
-    loadLocal();
-    return;
-  }
   try {
     const token = await authToken();
-    setStore("conversations", token ? await remote.fetchConversations(token) : []);
+    if (!token) return; // No user — nothing persisted to load.
+    setStore("conversations", await remote.fetchConversations(token));
   } catch (error) {
     console.error("[store] failed to load conversations:", error);
   }
-}
-
-function loadLocal(): void {
-  try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as Conversation[];
-    if (Array.isArray(parsed)) setStore("conversations", parsed);
-  } catch {
-    // Corrupt storage — start fresh rather than crash.
-  }
-}
-
-/** Wire up autosave. Call inside a component's onMount so the effect has an owner. */
-export function setupPersistence(): void {
-  if (isServer || authEnabled) return; // Remote mode writes through per-mutation.
-  createEffect(() => {
-    // Touch the field so the effect tracks it, then serialize.
-    const snapshot = store.conversations;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-    } catch {
-      // Quota or serialization failure — non-fatal for a local spike.
-    }
-  });
 }
 
 // MARK: - Conversation management
