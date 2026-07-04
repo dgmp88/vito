@@ -101,10 +101,16 @@ the `sub` claim — the id from `neon_auth.user`. Every read and write is scoped
 that user id, so the `DATABASE_URL` and verification key never leave the server.
 
 The schema lives in `migrations/` as timestamped `.sql` files
-(`{date}_{time}_{name}.sql`). On first database use the server applies any that
-haven't run yet, in filename order, each in its own transaction and recorded in a
-`schema_migrations` table — so no separate migration command is needed. To evolve
-the schema, add a new file to `migrations/`.
+(`{date}_{time}_{name}.sql`). The app assumes the schema already exists — it does
+**not** migrate on the request path. Apply a migration out-of-band with:
+
+```bash
+npm run migrate 20260704_120000_initial_schema.sql
+```
+
+That runs the named file's statements in a single transaction and records it in a
+`schema_migrations` table, so re-running is a no-op. To evolve the schema, add a
+new file to `migrations/` and run `npm run migrate` on it.
 
 ## Data model
 

@@ -52,10 +52,9 @@ function safeParse(text: string): unknown {
 export async function fetchConversations(token: string): Promise<Conversation[]> {
   "use server";
   const { verifyUser } = await import("./authServer");
-  const { getSql, runMigrations } = await import("./db");
+  const { getSql } = await import("./db");
 
   const userId = await verifyUser(token);
-  await runMigrations();
   const sql = getSql();
 
   const convRows = (await sql`
@@ -95,10 +94,9 @@ export async function createConversation(
 ): Promise<void> {
   "use server";
   const { verifyUser } = await import("./authServer");
-  const { getSql, runMigrations } = await import("./db");
+  const { getSql } = await import("./db");
 
   const userId = await verifyUser(token);
-  await runMigrations();
   const sql = getSql();
 
   await sql`
@@ -123,10 +121,9 @@ export async function appendMessages(
 ): Promise<void> {
   "use server";
   const { verifyUser } = await import("./authServer");
-  const { getSql, runMigrations } = await import("./db");
+  const { getSql } = await import("./db");
 
   const userId = await verifyUser(token);
-  await runMigrations();
   const sql = getSql();
 
   for (const message of messages) {
@@ -170,10 +167,9 @@ export async function setConversationTitle(
 ): Promise<void> {
   "use server";
   const { verifyUser } = await import("./authServer");
-  const { getSql, runMigrations } = await import("./db");
+  const { getSql } = await import("./db");
 
   const userId = await verifyUser(token);
-  await runMigrations();
   const sql = getSql();
 
   await sql`
@@ -186,10 +182,9 @@ export async function setConversationTitle(
 export async function deleteConversation(token: string, conversationId: string): Promise<void> {
   "use server";
   const { verifyUser } = await import("./authServer");
-  const { getSql, runMigrations } = await import("./db");
+  const { getSql } = await import("./db");
 
   const userId = await verifyUser(token);
-  await runMigrations();
   const sql = getSql();
 
   await sql`
