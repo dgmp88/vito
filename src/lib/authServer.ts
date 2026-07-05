@@ -27,7 +27,7 @@ function authBaseUrl(): string {
 }
 
 /** Verify the session JWT and return the user id (`sub`). Throws if invalid. */
-export async function verifyUser(token: string | null | undefined): Promise<string> {
+export async function verifyUser(token: string): Promise<string> {
   if (!token) throw new Error("Not authenticated: no session token.");
   const base = authBaseUrl();
   if (!jwks) jwks = createRemoteJWKSet(new URL(`${base}/.well-known/jwks.json`));

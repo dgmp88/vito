@@ -60,10 +60,10 @@ build), `npm run typecheck`.
 Optional env overrides: `VITO_TRANSCRIBE_MODEL` (default `gpt-realtime-whisper`),
 `VITO_CHAT_MODEL` (default `gpt-5.5`).
 
-## Auth (optional)
+## Auth
 
 Email + password login via [Neon Auth](https://neon.com/docs/auth/overview),
-using the `@neondatabase/auth` SDK (Better Auth under the hood). To enable it:
+using the `@neondatabase/auth` SDK (Better Auth under the hood). To configure it:
 
 1. Create a Neon project and enable **Auth** in the Neon Console.
 2. Copy the **Auth Base URL** (Console → your project → Auth) into `.env`:
@@ -80,16 +80,14 @@ using the `@neondatabase/auth` SDK (Better Auth under the hood). To enable it:
    DATABASE_URL=postgresql://user:password@ep-xxx.aws.neon.build/neondb?sslmode=require
    ```
 
-4. Restart the dev server. The app now shows a sign-in / sign-up screen and a
+4. Restart the dev server. The app shows a sign-in / sign-up screen and a
    sign-out button in the sidebar. Users are synced to the `neon_auth.user`
    table in your Neon database, and each user's conversations, messages, and
    documents are persisted to Postgres (see [Data model](#data-model)).
 
-If `VITE_NEON_AUTH_URL` is unset, the login screen is skipped entirely and the
-app runs without login; with no signed-in user there's no persistence backend,
-so conversations live only in memory for the session. The URL is a public
-endpoint (hence the `VITE_` prefix exposing it to the browser); sessions are
-managed client-side by the SDK.
+`VITE_NEON_AUTH_URL` is required. The URL is a public endpoint (hence the
+`VITE_` prefix exposing it to the browser); sessions are managed client-side by
+the SDK.
 
 ### How persistence is authenticated
 
@@ -140,8 +138,7 @@ all carrying the owning `user_id` (from `neon_auth.user`):
   changes; the transcript panes still read from `messages`.
 
 Loading decodes rows back into `Conversation[]`; mutations update the in-memory
-store immediately and write through to Postgres in the background. Without a
-signed-in user there's no backend, so conversations are kept only in memory.
+store immediately and write through to Postgres in the background.
 
 ## Layout
 
@@ -159,7 +156,7 @@ src/
     db.ts                    # Neon Postgres client + migration runner (migrations/*.sql)
     dbServer.ts              # per-user CRUD server functions (conversations/messages/documents)
     types.ts                 # OAI-shaped Conversation/Message + document/transcript derivations
-    store.ts                 # reactive store + Neon/localStorage persistence
+    store.ts                 # reactive store + Neon persistence
     appState.ts              # phase orchestration: record → transcribe → respond
     realtime.ts              # WebRTC transcription client (mic → OpenAI → events)
     agent.ts                 # chat SSE consumer (text + write_document accumulation)

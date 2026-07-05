@@ -5,8 +5,7 @@ import { createSignal } from "solid-js";
 //
 // The client talks directly to the Neon Auth endpoint (VITE_NEON_AUTH_URL,
 // from Neon Console → your project → Auth). Sessions are managed by the SDK.
-// When the URL isn't configured, auth is disabled and the app works without
-// signing in — conversations are local to the browser either way.
+// Auth is required: without this endpoint configured, the app cannot start.
 
 export interface AuthUser {
   id: string;
@@ -14,9 +13,13 @@ export interface AuthUser {
   name?: string | null;
 }
 
-const authUrl = import.meta.env.VITE_NEON_AUTH_URL as string | undefined;
+const configuredAuthUrl = import.meta.env.VITE_NEON_AUTH_URL as string | undefined;
 
-export const authEnabled = Boolean(authUrl);
+if (!configuredAuthUrl) {
+  throw new Error("VITE_NEON_AUTH_URL is not set. Add it to .env.");
+}
+
+const authUrl = configuredAuthUrl;
 
 interface AuthResult<T> {
   data: T | null;
@@ -60,7 +63,7 @@ interface NeonAuth {
 let instance: NeonAuth | undefined;
 
 function neon(): NeonAuth {
-  if (!instance) instance = createInternalNeonAuth(authUrl!) as unknown as NeonAuth;
+  if (!instance) instance = createInternalNeonAuth(authUrl) as unknown as NeonAuth;
   return instance;
 }
 
@@ -69,22 +72,19 @@ function auth(): NeonAuthClient {
 }
 
 /**
- * The current session's JWT, or null when auth is disabled or nobody is signed
- * in. The persistence layer passes this to the server, which verifies it and
- * scopes every query to the user.
+ * The current session's JWT. If there is no session, return to the login screen
+ * and fail instead of falling back to local-only persistence.
  */
-export async function authToken(): Promise<string | null> {
-  if (!authEnabled) return null;
-  try {
-    return await neon().getJWTToken();
-  } catch {
-    return null;
-  }
+export async function authToken(): Promise<string> {
+  const token = await neon().getJWTToken().catch(() => null);
+  if (token) return token;
+  setUser(null);
+  throw new Error("Not authenticated. Please sign in.");
 }
 
 const [user, setUser] = createSignal<AuthUser | null>(null);
 // Start true so the app doesn't flash the login form while restoring a session.
-const [sessionLoading, setSessionLoading] = createSignal(authEnabled);
+const [sessionLoading, setSessionLoading] = createSignal(true);
 
 export { user as authUser, sessionLoading };
 
@@ -94,7 +94,6 @@ function toAuthUser(u: RawUser): AuthUser {
 
 /** Restore an existing session on app load. */
 export async function loadSession(): Promise<void> {
-  if (!authEnabled) return;
   try {
     const { data } = await auth().getSession();
     setUser(data?.user ? toAuthUser(data.user) : null);

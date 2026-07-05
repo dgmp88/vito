@@ -39,9 +39,8 @@ export function selectedConversation(): Conversation | undefined {
 //
 // Conversations are persisted to Neon Postgres, per user, via the server
 // functions in dbServer.ts. Mutations update the in-memory reactive store
-// synchronously — the UI stays snappy — and are written through to Neon in the
-// background. Without a signed-in user (Neon Auth disabled) there's no backend,
-// so conversations live only in memory for the session.
+// synchronously so the UI stays snappy, then write through to Neon in the
+// background.
 
 // Remote writes run through a promise chain so they land in program order (a
 // conversation is created before its messages are appended). Failures are logged,
@@ -56,7 +55,6 @@ function remoteWrite(op: (token: string) => Promise<void>): void {
   writeChain = writeChain
     .then(async () => {
       const token = await tokenPromise;
-      if (!token) return; // Not signed in — nothing to scope the write to.
       await op(token);
     })
     .catch(error => console.error("[store] remote write failed:", error));
@@ -67,7 +65,6 @@ export async function loadConversations(): Promise<void> {
   if (isServer) return;
   try {
     const token = await authToken();
-    if (!token) return; // No user — nothing persisted to load.
     const fetched = await remote.fetchConversations(token);
     // Merge rather than replace: the UI is interactive while this loads, so a
     // conversation or turn created before the fetch resolves is already in the

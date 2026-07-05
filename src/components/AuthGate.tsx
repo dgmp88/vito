@@ -1,14 +1,14 @@
 import { createSignal, JSX, Match, Show, Switch } from "solid-js";
-import { authEnabled, authUser, sessionLoading, signIn, signUp } from "~/lib/auth";
+import { authUser, sessionLoading, signIn, signUp } from "~/lib/auth";
 
 /**
- * Renders children only once signed in (or immediately when Neon Auth isn't
- * configured). Otherwise shows the email/password login screen.
+ * Renders children only once signed in. Otherwise shows the email/password
+ * login screen.
  */
 export default function AuthGate(props: { children: JSX.Element }) {
   return (
     <Switch fallback={<LoginScreen />}>
-      <Match when={!authEnabled || authUser()}>{props.children}</Match>
+      <Match when={authUser()}>{props.children}</Match>
       <Match when={sessionLoading()}>
         <div class="auth">
           <p class="auth__loading">Loading…</p>

@@ -11,17 +11,13 @@
 
 import { neon } from "@neondatabase/serverless";
 
-type Sql = ReturnType<typeof neon>;
+const databaseUrl = process.env.DATABASE_URL;
+if (!databaseUrl) {
+  throw new Error("DATABASE_URL is not set on the server. Add it to .env.");
+}
 
-let sql: Sql | undefined;
+const sql = neon(databaseUrl);
 
-export function getSql(): Sql {
-  if (!sql) {
-    const url = process.env.DATABASE_URL;
-    if (!url) {
-      throw new Error("DATABASE_URL is not set on the server. Add it to .env.");
-    }
-    sql = neon(url);
-  }
+export function getSql(): typeof sql {
   return sql;
 }
