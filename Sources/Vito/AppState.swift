@@ -62,6 +62,10 @@ final class AppState {
     var streamedTokens: Int = 0
     var isWritingDocument: Bool = false
 
+    /// Whether the document pane is shown. Collapsed by default; opens when the
+    /// user toggles it or the assistant starts a `write_document` call.
+    var isDocumentPaneVisible: Bool = false
+
     /// Live transcription preview shown while recording. `liveConfirmed` is the
     /// stable text; `liveVolatile` is the latest low-confidence tail, rendered
     /// slightly lighter. Both clear once the final transcript is committed.
@@ -310,6 +314,7 @@ final class AppState {
                 self?.streamedText = update.assistantText
                 self?.streamedTokens = update.tokenCount
                 self?.isWritingDocument = update.isWritingDocument
+                if update.isWritingDocument { self?.isDocumentPaneVisible = true }
             }
             for message in appended {
                 append(message, to: conversation)

@@ -92,6 +92,9 @@ struct DocumentAgent {
             "messages": messages,
             "stream": true,
             "stream_options": ["include_usage": true],
+            // Route only to endpoints with a Zero Data Retention policy; the
+            // request fails rather than falling back to a non-ZDR provider.
+            "provider": ["zdr": true],
             "tools": [
                 [
                     "type": "function",

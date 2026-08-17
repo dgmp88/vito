@@ -16,12 +16,25 @@ struct ContentView: View {
                 HSplitView {
                     TranscriptPane()
                         .frame(minWidth: 280)
-                    DocumentPane()
-                        .frame(minWidth: 320)
+                    if state.isDocumentPaneVisible {
+                        DocumentPane()
+                            .frame(minWidth: 320)
+                    }
                 }
 
                 Divider()
                 BottomBar(showingSettings: $showingSettings)
+            }
+            .toolbar {
+                ToolbarItem(placement: .primaryAction) {
+                    Button {
+                        state.isDocumentPaneVisible.toggle()
+                    } label: {
+                        Image(systemName: "sidebar.trailing")
+                    }
+                    .help(state.isDocumentPaneVisible ? "Hide document" : "Show document")
+                    .keyboardShortcut("d", modifiers: .command)
+                }
             }
         }
         .background {
