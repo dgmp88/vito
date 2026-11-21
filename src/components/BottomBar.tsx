@@ -1,12 +1,15 @@
 import { Show } from "solid-js";
 import {
   errorMessage,
+  expertJobs,
   isBusy,
-  isRecording,
-  isWritingDocument,
+  isLive,
+  muted,
+  notice,
   phase,
-  streamedTokens,
-  toggleRecording,
+  speaking,
+  toggleMuted,
+  toggleSession,
 } from "~/lib/appState";
 import { deleteConversation, selectedConversation } from "~/lib/store";
 
@@ -17,21 +20,18 @@ export default function BottomBar() {
   };
 
   const statusText = () => {
+    const expert = expertJobs().length > 0 ? "Expert is thinking…" : "";
     switch (phase()) {
       case "connecting":
         return "Connecting…";
-      case "recording":
-        return "Listening…";
-      case "transcribing":
-        return "Transcribing…";
-      case "responding": {
-        const verb = isWritingDocument() ? "Writing" : "Thinking";
-        return streamedTokens() > 0 ? `${verb}… ${streamedTokens()} tokens` : `${verb}…`;
+      case "live": {
+        const voice = speaking() ? "Speaking…" : "Listening…";
+        return [voice, expert].filter(Boolean).join(" · ");
       }
       case "error":
         return errorMessage();
       default:
-        return "Ready";
+        return expert || notice() || "Ready";
     }
   };
 
@@ -39,10 +39,8 @@ export default function BottomBar() {
     switch (phase()) {
       case "connecting":
         return "Starting";
-      case "recording":
+      case "live":
         return "Stop";
-      case "transcribing":
-        return "Finishing";
       default:
         return "Record";
     }
@@ -51,23 +49,34 @@ export default function BottomBar() {
   return (
     <div class="bottom-bar">
       <button
-        class={{ "record-btn": true, "record-btn--recording": isRecording() }}
-        onClick={toggleRecording}
-        disabled={isBusy()}
+        class={{ "record-btn": true, "record-btn--recording": isLive() }}
+        // Keep a document highlight from being dropped by focus moving to the button.
+        onMouseDown={e => e.preventDefault()}
+        onClick={toggleSession}
+        disabled={phase() === "connecting"}
       >
-        <span class={{ "record-dot": true, "record-dot--pulse": isRecording() }} />
+        <span class={{ "record-dot": true, "record-dot--pulse": isLive() }} />
         {recordLabel()}
       </button>
 
       <span class={{ status: true, "status--error": phase() === "error" }}>
-        <Show when={phase() === "responding" && streamedTokens() > 0} fallback={statusText()}>
-          <span class="status__tokens">{statusText()}</span>
+        <Show when={phase() === "live" && notice()} fallback={statusText()}>
+          {statusText()} · {notice()}
         </Show>
       </span>
 
-      <span class="hint">Space to record</span>
+      <span class="hint">Space to start/stop · Esc clears highlight</span>
 
-      <button class="icon-btn" onClick={handleDelete} disabled={!selectedConversation()}>
+      <button
+        class="icon-btn"
+        onMouseDown={e => e.preventDefault()}
+        onClick={toggleMuted}
+        title={muted() ? "Vito's voice is muted" : "Mute Vito's voice"}
+      >
+        {muted() ? "Voice off" : "Voice on"}
+      </button>
+
+      <button class="icon-btn" onClick={handleDelete} disabled={!selectedConversation() || isBusy()}>
         Delete
       </button>
     </div>

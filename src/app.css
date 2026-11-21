@@ -191,6 +191,10 @@ button:disabled {
 }
 
 .pane__header {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  min-height: 42px;
   flex: 0 0 auto;
   padding: 12px 18px;
   font-size: 11px;
@@ -267,6 +271,113 @@ button:disabled {
   margin-top: 32px;
 }
 
+.entry--expert .entry__role {
+  color: var(--accent-strong);
+}
+
+.entry--expert .entry__text {
+  background: var(--panel);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--accent);
+  border-radius: var(--radius);
+  padding: 9px 14px;
+  box-shadow: var(--shadow);
+}
+
+.entry__markdown {
+  white-space: normal;
+}
+.entry__markdown > :first-child {
+  margin-top: 0;
+}
+.entry__markdown > :last-child {
+  margin-bottom: 0;
+}
+.entry__markdown p,
+.entry__markdown li {
+  margin: 0.4em 0;
+}
+.entry__markdown ul,
+.entry__markdown ol {
+  padding-left: 1.3em;
+}
+.entry__markdown h1,
+.entry__markdown h2,
+.entry__markdown h3 {
+  font-size: 1.02em;
+  margin: 0.9em 0 0.3em;
+}
+.entry__markdown code {
+  font-family: var(--mono);
+  font-size: 0.88em;
+  background: var(--sidebar);
+  padding: 0.1em 0.3em;
+  border-radius: 4px;
+}
+
+.entry__thinking {
+  color: var(--text-tertiary);
+  font-style: italic;
+  animation: vito-breathe 1.6s ease-in-out infinite;
+}
+
+@keyframes vito-breathe {
+  50% {
+    opacity: 0.45;
+  }
+}
+
+.entry--edit .entry__text {
+  align-self: center;
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+.entry--edit .entry__text::before {
+  content: "✎ ";
+}
+
+.entry__selection {
+  font-size: 12px;
+  color: var(--text-secondary);
+  border-left: 3px solid var(--accent-soft);
+  padding: 1px 0 1px 9px;
+  margin-bottom: 2px;
+  white-space: pre-wrap;
+  display: -webkit-box;
+  -webkit-line-clamp: 3;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.pane__badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  margin-left: auto;
+  padding: 2px 4px 2px 9px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  text-transform: none;
+}
+
+.pane__badge-clear {
+  border: none;
+  background: none;
+  color: inherit;
+  font-size: 14px;
+  line-height: 1;
+  padding: 0 4px;
+}
+
+/* Persistent highlight for the active selection (CSS Custom Highlight API). */
+::highlight(vito-selection) {
+  background-color: rgba(64, 145, 108, 0.28);
+}
+
 /* ---------- Document ---------- */
 
 .doc {
@@ -296,7 +407,8 @@ button:disabled {
 .doc h3 {
   font-size: 1.12em;
 }
-.doc > :first-child {
+.doc > :first-child,
+.doc > .doc-block:first-child > :first-child {
   margin-top: 0;
 }
 .doc p,

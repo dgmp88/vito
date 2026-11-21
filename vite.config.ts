@@ -4,7 +4,7 @@ import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ command, mode }) => {
   if (command === "serve") {
-    const env = loadEnv(mode, process.cwd(), ["OPENAI_API_KEY", "VITO_"]);
+    const env = loadEnv(mode, process.cwd(), ["GEMINI_API_KEY", "VITO_"]);
     for (const [key, value] of Object.entries(env)) {
       process.env[key] ??= value;
     }

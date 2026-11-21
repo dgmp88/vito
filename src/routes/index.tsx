@@ -4,17 +4,22 @@ import TranscriptPane from "~/components/TranscriptPane";
 import DocumentPane from "~/components/DocumentPane";
 import BottomBar from "~/components/BottomBar";
 import { newConversation, setupPersistence } from "~/lib/store";
-import { clearError, isBusy, toggleRecording } from "~/lib/appState";
+import { clearError, isBusy, setupSelectionSync, toggleSession } from "~/lib/appState";
+import { clearSelection } from "~/lib/selection";
 
 export default function Home() {
   setupPersistence();
+  setupSelectionSync();
 
   onSettled(() => {
     const onKeyDown = (e: KeyboardEvent) => {
-      // Space toggles recording (preventDefault stops it also activating a focused button).
+      // Space toggles the session (preventDefault stops it also activating a focused button).
       if (e.code === "Space" && !e.metaKey && !e.ctrlKey && !e.altKey) {
         e.preventDefault();
-        toggleRecording();
+        toggleSession();
+      } else if (e.key === "Escape") {
+        clearSelection();
+        window.getSelection()?.removeAllRanges();
       } else if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "n") {
         e.preventDefault();
         if (!isBusy()) {

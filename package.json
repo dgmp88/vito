@@ -9,6 +9,7 @@
     "typecheck": "tsc --noEmit"
   },
   "dependencies": {
+    "@google/genai": "^3.6.1",
     "@solidjs/web": "^2.0.3",
     "marked": "^15.0.0",
     "solid-js": "^2.0.3"

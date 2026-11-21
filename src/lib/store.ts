@@ -1,7 +1,8 @@
 import { createEffect, createSignal, createStore, onSettled } from "solid-js";
-import type { ChatMessage, Conversation } from "./types";
+import { migrateLegacyConversation, type Conversation, type Turn } from "./types";
 
-const STORAGE_KEY = "vito.conversations.v1";
+const STORAGE_KEY = "vito.conversations.v2";
+const LEGACY_STORAGE_KEY = "vito.conversations.v1";
 
 interface StoreShape {
   conversations: Conversation[];
@@ -38,16 +39,26 @@ export function selectedConversation(): Conversation | undefined {
 function loadFromStorage(): void {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
-    if (!raw) return;
-    const parsed = JSON.parse(raw) as Conversation[];
-    if (Array.isArray(parsed)) {
-      setStore(draft => {
-        draft.conversations = parsed;
-      });
+    if (raw) {
+      const parsed = JSON.parse(raw) as Conversation[];
+      if (Array.isArray(parsed)) setConversations(parsed);
+      return;
+    }
+    // One-time migration from the v1 (OpenAI chat-completions shaped) format.
+    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
+    if (legacy) {
+      const parsed = JSON.parse(legacy);
+      if (Array.isArray(parsed)) setConversations(parsed.map(migrateLegacyConversation));
     }
   } catch {
     // Corrupt storage — start fresh rather than crash.
   }
+}
+
+function setConversations(conversations: Conversation[]): void {
+  setStore(draft => {
+    draft.conversations = conversations;
+  });
 }
 
 /** Restore after hydration, then track changes for autosave. */
@@ -103,7 +114,8 @@ export function ensureConversation(): Conversation {
     title: "",
     createdAt: now,
     updatedAt: now,
-    messages: [],
+    document: "",
+    turns: [],
   };
   setStore(draft => {
     draft.conversations.push(conversation);
@@ -112,13 +124,38 @@ export function ensureConversation(): Conversation {
   return conversation;
 }
 
-export function appendMessages(conversationId: string, messages: ChatMessage[]): void {
+function updateConversation(conversationId: string, update: (conversation: Conversation) => void): void {
   setStore(draft => {
     const conversation = draft.conversations.find(c => c.id === conversationId);
     if (!conversation) return;
-    conversation.messages.push(...messages);
+    update(conversation);
     conversation.updatedAt = new Date().toISOString();
   });
+}
+
+/** Appends a turn and returns its index. */
+export function appendTurn(conversationId: string, turn: Turn): number {
+  let index = -1;
+  updateConversation(conversationId, conversation => {
+    index = conversation.turns.push(turn) - 1;
+  });
+  return index;
+}
+
+export function replaceTurn(conversationId: string, index: number, turn: Turn): void {
+  updateConversation(conversationId, conversation => {
+    if (index >= 0 && index < conversation.turns.length) conversation.turns[index] = turn;
+  });
+}
+
+export function setDocument(conversationId: string, document: string): void {
+  updateConversation(conversationId, conversation => {
+    conversation.document = document;
+  });
+}
+
+export function conversationById(id: string): Conversation | undefined {
+  return store.conversations.find(c => c.id === id);
 }
 
 export function setConversationTitle(conversationId: string, title: string): void {
