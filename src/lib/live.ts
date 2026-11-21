@@ -16,6 +16,7 @@ import {
   type FunctionResponse,
   type LiveServerMessage,
   type Session,
+  type UsageMetadata,
 } from "@google/genai";
 import { AudioPlayer, MicCapture } from "./audio";
 import { createLiveSession } from "./geminiServer";
@@ -31,6 +32,8 @@ export interface LiveCallbacks {
   onInterrupted: () => void;
   onTurnComplete: () => void;
   onSpeakingChange: (speaking: boolean) => void;
+  /** Token usage for one model turn (the Live API reports it once per turn). */
+  onUsage: (model: string, usage: UsageMetadata) => void;
   /** Fatal: the session is gone and won't reconnect. */
   onError: (message: string) => void;
 }
@@ -83,10 +86,6 @@ export class LiveVoiceSession {
 
   sendToolResponses(responses: FunctionResponse[]): void {
     this.session?.sendToolResponse({ functionResponses: responses });
-  }
-
-  setMuted(muted: boolean): void {
-    this.player.setMuted(muted);
   }
 
   stop(): void {
@@ -192,6 +191,7 @@ export class LiveVoiceSession {
     if (message.sessionResumptionUpdate?.resumable && message.sessionResumptionUpdate.newHandle) {
       this.resumeHandle = message.sessionResumptionUpdate.newHandle;
     }
+    if (message.usageMetadata) this.callbacks.onUsage(this.model, message.usageMetadata);
     if (message.goAway) void this.reconnect();
   }
 }

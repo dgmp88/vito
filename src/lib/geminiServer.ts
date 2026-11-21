@@ -1,23 +1,18 @@
 // Server functions. The Gemini API key never leaves the server:
 //   - createLiveSession() mints a single-use ephemeral token with the Live
 //     session config (prompt, tools, VAD, transcription) locked in.
-//   - streamExpert() runs the expert handoff on Gemini 4 Neon and streams the
-//     answer back as NDJSON.
+//   - streamExpert() runs the expert handoff (tool-calling loop on Gemini 4 Neon)
+//     and streams its edits / reply / usage back as NDJSON.
 
 import { GoogleGenAI, ThinkingLevel } from "@google/genai";
 import { markSafeError } from "@solidjs/web";
-import { expertContents, expertSystemInstruction, type ExpertRequest } from "./expertPrompt";
+import { runExpert, type ExpertEvent } from "./expertAgent";
+import type { ExpertRequest } from "./expertPrompt";
 import { liveSessionConfig } from "./liveConfig";
 
 const LIVE_MODEL = process.env.VITO_LIVE_MODEL || "gemini-3.8-live";
 const EXPERT_MODEL = process.env.VITO_EXPERT_MODEL || "gemini-4-neon";
-const EXPERT_THINKING = (process.env.VITO_EXPERT_THINKING || "medium").toUpperCase() as ThinkingLevel;
-
-/** One line of the expert stream. */
-export type ExpertEvent =
-  | { type: "text"; text: string }
-  | { type: "done"; model: string; promptTokens?: number; cachedTokens?: number; outputTokens?: number }
-  | { type: "error"; message: string };
+const EXPERT_THINKING = (process.env.VITO_EXPERT_THINKING || "high").toUpperCase() as ThinkingLevel;
 
 let client: GoogleGenAI | undefined;
 function gemini(): GoogleGenAI {
@@ -57,42 +52,13 @@ export async function streamExpert(request: ExpertRequest): Promise<Response> {
 
   const ai = gemini();
   const encoder = new TextEncoder();
-  const line = (event: ExpertEvent) => encoder.encode(JSON.stringify(event) + "\n");
-
   const body = new ReadableStream<Uint8Array>({
     async start(controller) {
+      const emit = (event: ExpertEvent) => controller.enqueue(encoder.encode(JSON.stringify(event) + "\n"));
       try {
-        const stream = await ai.models.generateContentStream({
-          model: EXPERT_MODEL,
-          contents: expertContents(request),
-          config: {
-            systemInstruction: expertSystemInstruction(request.document),
-            thinkingConfig: { thinkingLevel: EXPERT_THINKING },
-          },
-        });
-
-        let usage: { promptTokenCount?: number; cachedContentTokenCount?: number; candidatesTokenCount?: number } = {};
-        for await (const chunk of stream) {
-          if (chunk.usageMetadata) usage = chunk.usageMetadata;
-          const text = chunk.text;
-          if (text) controller.enqueue(line({ type: "text", text }));
-        }
-
-        console.log(
-          `[expert] ${EXPERT_MODEL} prompt=${usage.promptTokenCount ?? "?"} ` +
-            `cached=${usage.cachedContentTokenCount ?? 0} out=${usage.candidatesTokenCount ?? "?"}`
-        );
-        controller.enqueue(
-          line({
-            type: "done",
-            model: EXPERT_MODEL,
-            promptTokens: usage.promptTokenCount,
-            cachedTokens: usage.cachedContentTokenCount,
-            outputTokens: usage.candidatesTokenCount,
-          })
-        );
+        await runExpert(ai, EXPERT_MODEL, EXPERT_THINKING, request, emit);
       } catch (error) {
-        controller.enqueue(line({ type: "error", message: (error as Error).message }));
+        emit({ type: "error", message: (error as Error).message });
       } finally {
         controller.close();
       }

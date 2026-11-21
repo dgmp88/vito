@@ -1,18 +1,13 @@
 // Client side of the expert handoff: calls the streamExpert server function and
-// consumes its NDJSON stream.
+// dispatches its NDJSON events as they arrive.
 
+import type { ExpertEvent } from "./expertAgent";
 import type { ExpertRequest } from "./expertPrompt";
-import { streamExpert, type ExpertEvent } from "./geminiServer";
+import { streamExpert } from "./geminiServer";
 
-export interface ExpertResult {
-  answer: string;
-  model: string;
-}
+type Handlers = (event: Exclude<ExpertEvent, { type: "error" }>) => void;
 
-export async function askExpert(
-  request: ExpertRequest,
-  onText: (answerSoFar: string) => void
-): Promise<ExpertResult> {
+export async function askExpert(request: ExpertRequest, onEvent: Handlers): Promise<void> {
   const res = await streamExpert(request);
   if (!res.ok || !res.body) {
     throw new Error((await res.text().catch(() => "")) || `Expert request failed (HTTP ${res.status}).`);
@@ -21,20 +16,12 @@ export async function askExpert(
   const reader = res.body.getReader();
   const decoder = new TextDecoder();
   let buffer = "";
-  let answer = "";
-  let model = "";
 
   const handle = (raw: string) => {
     if (!raw.trim()) return;
     const event = JSON.parse(raw) as ExpertEvent;
-    if (event.type === "text") {
-      answer += event.text;
-      onText(answer);
-    } else if (event.type === "done") {
-      model = event.model;
-    } else if (event.type === "error") {
-      throw new Error(event.message);
-    }
+    if (event.type === "error") throw new Error(event.message);
+    onEvent(event);
   };
 
   for (;;) {
@@ -46,7 +33,4 @@ export async function askExpert(
     lines.forEach(handle);
   }
   handle(buffer);
-
-  if (!answer.trim()) throw new Error("The expert returned an empty answer.");
-  return { answer: answer.trim(), model };
 }

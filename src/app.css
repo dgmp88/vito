@@ -378,6 +378,25 @@ button:disabled {
   background-color: rgba(64, 145, 108, 0.28);
 }
 
+.expert {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.expert__question {
+  font-size: 12px;
+  color: var(--text-tertiary);
+}
+
+.expert__edit {
+  font-size: 13px;
+  color: var(--accent-strong);
+}
+.expert__edit::before {
+  content: "✎ ";
+}
+
 /* ---------- Document ---------- */
 
 .doc {
@@ -549,6 +568,76 @@ button:disabled {
 .icon-btn:hover:not(:disabled) {
   color: var(--record);
   border-color: var(--record);
+}
+
+.costs {
+  display: inline-flex;
+  gap: 6px;
+  margin-left: auto;
+}
+
+.cost {
+  position: relative;
+  padding: 4px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text-secondary);
+  font-size: 12px;
+  cursor: default;
+  outline: none;
+}
+
+.cost__label {
+  color: var(--text-tertiary);
+}
+
+.cost__card {
+  display: none;
+  position: absolute;
+  bottom: calc(100% + 8px);
+  right: 0;
+  z-index: 10;
+  min-width: 230px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 8px 28px rgba(8, 28, 21, 0.14);
+  flex-direction: column;
+  gap: 5px;
+}
+
+.cost:hover .cost__card,
+.cost:focus .cost__card {
+  display: flex;
+}
+
+.cost__title {
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+  margin-bottom: 2px;
+}
+
+.cost__row {
+  display: grid;
+  grid-template-columns: 1fr auto 64px;
+  gap: 10px;
+  color: var(--text);
+}
+.cost__row > :last-child {
+  text-align: right;
+}
+
+.cost__tokens {
+  color: var(--text-tertiary);
+}
+
+.cost__empty {
+  color: var(--text-tertiary);
 }
 
 .hint {

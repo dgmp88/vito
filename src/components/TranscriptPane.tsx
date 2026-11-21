@@ -9,6 +9,23 @@ function markdownHtml(text: string): string {
   return marked.parse(text, { async: false }) as string;
 }
 
+/** An expert turn: the handed-off request, edits it made, and/or its reply. */
+function ExpertBody(props: { question: string; edits: string[]; reply: string; thinking?: string }) {
+  return (
+    <div class="entry__text expert">
+      <div class="expert__question">{props.question}</div>
+      <For each={props.edits}>{edit => <div class="expert__edit">{edit}</div>}</For>
+      <Show when={props.reply}>
+        {/* eslint-disable-next-line solid/no-innerhtml */}
+        <div class="entry__markdown" innerHTML={markdownHtml(props.reply)} />
+      </Show>
+      <Show when={props.thinking}>
+        <div class="entry__thinking">{props.thinking}</div>
+      </Show>
+    </div>
+  );
+}
+
 export default function TranscriptPane() {
   const entries = createMemo(() => conversationTranscript(selectedConversation()));
   let body: HTMLDivElement | undefined;
@@ -52,8 +69,7 @@ export default function TranscriptPane() {
                     when={entry().role === "expert"}
                     fallback={<div class="entry__text">{entry().text}</div>}
                   >
-                    {/* eslint-disable-next-line solid/no-innerhtml */}
-                    <div class="entry__text entry__markdown" innerHTML={markdownHtml(entry().text)} />
+                    <ExpertBody question={entry().question ?? ""} edits={entry().edits ?? []} reply={entry().text} />
                   </Show>
                 </div>
               )}
@@ -77,13 +93,12 @@ export default function TranscriptPane() {
               {job => (
                 <div class="entry entry--expert entry--streaming">
                   <span class="entry__role">Expert</span>
-                  <Show
-                    when={job().text}
-                    fallback={<div class="entry__text entry__thinking">Thinking about: {job().question}</div>}
-                  >
-                    {/* eslint-disable-next-line solid/no-innerhtml */}
-                    <div class="entry__text entry__markdown" innerHTML={markdownHtml(job().text)} />
-                  </Show>
+                  <ExpertBody
+                    question={job().question}
+                    edits={job().edits}
+                    reply={job().reply}
+                    thinking={job().thought || "Thinking…"}
+                  />
                 </div>
               )}
             </For>

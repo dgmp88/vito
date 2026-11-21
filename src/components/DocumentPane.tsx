@@ -1,5 +1,6 @@
 import { Show, createEffect, createMemo, onSettled } from "solid-js";
 import { selectedConversation } from "~/lib/store";
+import { canPasteDocument, pasteDocument } from "~/lib/appState";
 import { clearSelection, renderBlocks, selection, trackSelection } from "~/lib/selection";
 
 export default function DocumentPane() {
@@ -20,7 +21,21 @@ export default function DocumentPane() {
 
   onSettled(() => {
     if (!body) return;
-    return trackSelection(body, markdown);
+    const stopTracking = trackSelection(body, markdown);
+    // Before anything has happened in a chat, a paste anywhere becomes its document.
+    const onPaste = (e: ClipboardEvent) => {
+      const target = e.target as HTMLElement | null;
+      if (target?.closest("input, textarea, [contenteditable]")) return;
+      const text = e.clipboardData?.getData("text/plain") ?? "";
+      if (!text.trim() || !canPasteDocument()) return;
+      e.preventDefault();
+      pasteDocument(text);
+    };
+    window.addEventListener("paste", onPaste);
+    return () => {
+      stopTracking();
+      window.removeEventListener("paste", onPaste);
+    };
   });
 
   return (
@@ -39,7 +54,13 @@ export default function DocumentPane() {
       <div class="pane__body" ref={body}>
         <Show
           when={markdown()}
-          fallback={<p class="doc--empty">No document yet. Ask Vito to write one.</p>}
+          fallback={
+            <p class="doc--empty">
+              <Show when={canPasteDocument()} fallback="No document yet. Ask Vito to write one.">
+                No document yet. Paste one in (⌘V), or ask Vito to write one.
+              </Show>
+            </p>
+          }
         >
           {/* eslint-disable-next-line solid/no-innerhtml */}
           <div class="doc" innerHTML={html()} />

@@ -1,5 +1,6 @@
 import { createEffect, createSignal, createStore, onSettled } from "solid-js";
 import { migrateLegacyConversation, type Conversation, type Turn } from "./types";
+import { addUsage, emptyUsage, type UsageTotals } from "./usage";
 
 const STORAGE_KEY = "vito.conversations.v2";
 const LEGACY_STORAGE_KEY = "vito.conversations.v1";
@@ -151,6 +152,13 @@ export function replaceTurn(conversationId: string, index: number, turn: Turn): 
 export function setDocument(conversationId: string, document: string): void {
   updateConversation(conversationId, conversation => {
     conversation.document = document;
+  });
+}
+
+export function recordUsage(conversationId: string, role: "voice" | "expert", usage: UsageTotals): void {
+  updateConversation(conversationId, conversation => {
+    conversation.usage ??= {};
+    conversation.usage[role] = addUsage(conversation.usage[role] ?? emptyUsage(), usage);
   });
 }
 

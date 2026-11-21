@@ -1,16 +1,21 @@
 // Prompt layout for the expert handoff, engineered for Gemini implicit caching
 // (prefix match, >= 4,096 tokens on Gemini 4 Neon):
 //
-//   systemInstruction: [static instructions][document]      ← changes only on edits
+//   tools + systemInstruction: [static prompt][document]   ← changes only on edits
 //   contents[0] (user): [conversation log][handoff request] ← log is append-only
 //
 // Everything that varies per request sits at the very end, so consecutive
-// handoffs share the longest possible prefix: instructions + document + the log
-// up to the previous handoff. A document edit busts the cache from the
+// handoffs share the longest possible prefix: tools + prompt + document + the
+// log up to the previous handoff. A document edit busts the cache from the
 // document onward, which is the cheapest place for it to happen.
 
-import type { Content } from "@google/genai";
+import { Type, type Content, type FunctionDeclaration } from "@google/genai";
+import { EXPERT_SYSTEM_PROMPT } from "./prompts/expert";
 import { serializeTurns, type Turn } from "./types";
+
+export const EXPERT_TOOL_EDIT = "edit_document";
+export const EXPERT_TOOL_WRITE = "write_document";
+export const EXPERT_TOOL_REPLY = "reply";
 
 export interface ExpertRequest {
   document: string;
@@ -19,21 +24,63 @@ export interface ExpertRequest {
   selection?: string | null;
 }
 
-const EXPERT_INSTRUCTIONS = `You are the expert behind Vito, a voice-driven writing assistant. A \
-fast voice model talks with the user and hands you the requests that need careful thought. Your answer \
-is shown to the user as text beside their document.
+const summary = {
+  type: Type.STRING,
+  description: "One short line describing the change, shown to the user.",
+};
 
-- Answer the handoff request directly. No preamble, and don't restate the question.
-- Be thorough where it matters and brief where it doesn't. Use markdown (short headings, lists, bold) \
-when it makes the answer easier to scan.
-- Ground your answer in the document and the conversation when they are relevant. Quote the document \
-sparingly.
-- You can't edit the document. If the user would benefit from a change, propose the exact wording; \
-they can ask Vito to apply it.`;
+export const EXPERT_TOOLS: FunctionDeclaration[] = [
+  {
+    name: EXPERT_TOOL_EDIT,
+    description: "Apply targeted find/replace edits to the document, in order.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        edits: {
+          type: Type.ARRAY,
+          items: {
+            type: Type.OBJECT,
+            properties: {
+              find: {
+                type: Type.STRING,
+                description: "Exact text copied from the current document; must occur exactly once.",
+              },
+              replace: { type: Type.STRING, description: "The replacement text (may be empty)." },
+            },
+            required: ["find", "replace"],
+          },
+        },
+        summary,
+      },
+      required: ["edits", "summary"],
+    },
+  },
+  {
+    name: EXPERT_TOOL_WRITE,
+    description: "Write the complete document, replacing everything.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: {
+        markdown: { type: Type.STRING, description: "The complete markdown document." },
+        summary,
+      },
+      required: ["markdown", "summary"],
+    },
+  },
+  {
+    name: EXPERT_TOOL_REPLY,
+    description: "Answer the user in markdown, shown in the transcript.",
+    parameters: {
+      type: Type.OBJECT,
+      properties: { markdown: { type: Type.STRING, description: "The answer, in markdown." } },
+      required: ["markdown"],
+    },
+  },
+];
 
 export function expertSystemInstruction(document: string): string {
   const body = document.trim() ? document : "(The document is empty.)";
-  return `${EXPERT_INSTRUCTIONS}\n\n<document>\n${body}\n</document>`;
+  return `${EXPERT_SYSTEM_PROMPT}\n\n<document>\n${body}\n</document>`;
 }
 
 export function expertContents(request: ExpertRequest): Content[] {

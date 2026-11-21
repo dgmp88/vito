@@ -6,6 +6,7 @@
 import { createEffect, createSignal } from "solid-js";
 import type { FunctionCall, FunctionResponse } from "@google/genai";
 import { FunctionResponseScheduling } from "@google/genai";
+import { applyEdits } from "./docEdits";
 import { askExpert } from "./expert";
 import { LiveVoiceSession } from "./live";
 import {
@@ -21,19 +22,25 @@ import {
   appendTurn,
   conversationById,
   ensureConversation,
+  recordUsage,
   replaceTurn,
   selectedConversation,
   setConversationTitle,
   setDocument,
 } from "./store";
 import { serializeTurns, titleFromUtterance, type Turn } from "./types";
+import { liveUsage } from "./usage";
 
 export type Phase = "idle" | "connecting" | "live" | "error";
 
 export interface ExpertJob {
   id: string;
   question: string;
-  text: string;
+  /** Latest thought-summary heading, for a progress line. */
+  thought: string;
+  /** Summaries of edits applied so far. */
+  edits: string[];
+  reply: string;
 }
 
 /** How much prior conversation to replay into a fresh Live session. */
@@ -48,10 +55,9 @@ const [liveUser, setLiveUser] = createSignal("");
 /** The model's in-progress spoken reply (output transcription not yet committed). */
 const [liveAssistant, setLiveAssistant] = createSignal("");
 const [speaking, setSpeaking] = createSignal(false);
-const [muted, setMutedSignal] = createSignal(false);
 const [expertJobs, setExpertJobs] = createSignal<ExpertJob[]>([]);
 
-export { phase, errorMessage, notice, liveUser, liveAssistant, speaking, muted, expertJobs };
+export { phase, errorMessage, notice, liveUser, liveAssistant, speaking, expertJobs };
 
 let session: LiveVoiceSession | undefined;
 /** The conversation this session writes to (created lazily on the first turn). */
@@ -85,12 +91,6 @@ export function toggleSession(): void {
     default:
       break;
   }
-}
-
-export function toggleMuted(): void {
-  const next = !muted();
-  setMutedSignal(next);
-  session?.setMuted(next);
 }
 
 async function startSession(): Promise<void> {
@@ -131,13 +131,13 @@ async function startSession(): Promise<void> {
       currentUserTurn = -1;
     },
     onSpeakingChange: setSpeaking,
+    onUsage: (model, meta) => recordUsage(conversationId(), "voice", liveUsage(model, meta)),
     onError: message => {
       stopSession();
       fail("Live session error", message);
     },
   });
   session = live;
-  live.setMuted(muted());
   setPhase("connecting");
   try {
     await live.start(context);
@@ -263,11 +263,32 @@ async function runExpert(call: FunctionCall, question: string): Promise<void> {
   const conversation = conversationById(id);
   const document = conversation?.document ?? "";
   const jobId = call.id ?? crypto.randomUUID();
-  setExpertJobs(jobs => [...jobs, { id: jobId, question, text: "" }]);
+  const job: ExpertJob = { id: jobId, question, thought: "", edits: [], reply: "" };
+  const update = (patch: Partial<ExpertJob>) => {
+    Object.assign(job, patch);
+    setExpertJobs(jobs => jobs.map(j => (j.id === jobId ? { ...job, edits: [...job.edits] } : j)));
+  };
+  setExpertJobs(jobs => [...jobs, { ...job }]);
   const live = session;
+  let model = "";
+  let edited = false;
+
+  // Edits are re-applied to the *current* document: the voice model may have
+  // changed it while the expert was thinking.
+  const applyToDocument = (next: (current: string) => string | null, summary: string) => {
+    const current = conversationById(id)?.document ?? "";
+    const result = next(current);
+    if (result === null) {
+      showNotice(`Couldn't apply an expert edit (the document changed): ${summary}`);
+      return;
+    }
+    setDocument(id, result);
+    edited = true;
+    update({ edits: [...job.edits, summary || "Edited the document"] });
+  };
 
   try {
-    const result = await askExpert(
+    await askExpert(
       {
         document,
         // Plain copy: store proxies don't serialize across the server-function boundary.
@@ -275,15 +296,43 @@ async function runExpert(call: FunctionCall, question: string): Promise<void> {
         question,
         selection: currentSelection(document)?.text ?? null,
       },
-      text => setExpertJobs(jobs => jobs.map(job => (job.id === jobId ? { ...job, text } : job))),
+      event => {
+        switch (event.type) {
+          case "thought":
+            update({ thought: thoughtHeading(event.text) });
+            break;
+          case "edit":
+            applyToDocument(current => {
+              const result = applyEdits(current, event.edits);
+              return result.ok ? result.document : null;
+            }, event.summary);
+            break;
+          case "write":
+            applyToDocument(() => event.markdown, event.summary);
+            break;
+          case "reply":
+            update({ reply: job.reply ? `${job.reply}\n\n${event.markdown}` : event.markdown });
+            break;
+          case "done":
+            model = event.model;
+            recordUsage(id, "expert", event.usage);
+            break;
+        }
+      }
     );
-    appendTurn(id, { role: "expert", question, answer: result.answer, model: result.model });
-    // Give the voice model the answer for follow-ups, without having it read it out.
+    const turn: Turn = { role: "expert", question, model };
+    if (job.edits.length) turn.edits = [...job.edits];
+    if (job.reply) turn.reply = job.reply;
+    appendTurn(id, turn);
+
+    // Bring the voice model up to date without having it read anything out.
     if (live && live === session) {
+      if (edited) live.sendContext([documentContext(conversationById(id)?.document ?? "")]);
+      const outcome = { edits_made: job.edits, reply_shown_to_user: job.reply || null };
       if (call.id && !cancelledToolCalls.has(call.id)) {
-        respond(call, { answer_shown_to_user: result.answer }, FunctionResponseScheduling.SILENT);
+        respond(call, outcome, FunctionResponseScheduling.SILENT);
       } else {
-        live.sendContext([`[Expert] This answer is now shown to the user:\n${result.answer}`]);
+        live.sendContext([`[Expert] Finished: ${JSON.stringify(outcome)}`]);
       }
     }
   } catch (error) {
@@ -291,8 +340,35 @@ async function runExpert(call: FunctionCall, question: string): Promise<void> {
     showNotice(`Expert failed: ${message}`);
     if (live && live === session) respond(call, { error: message });
   } finally {
-    setExpertJobs(jobs => jobs.filter(job => job.id !== jobId));
+    setExpertJobs(jobs => jobs.filter(j => j.id !== jobId));
   }
+}
+
+/** Thought summaries look like "**Heading**\n\nbody"; keep the heading. */
+function thoughtHeading(text: string): string {
+  const first = text.trim().split("\n")[0] ?? "";
+  return first.replace(/^\*\*|\*\*$/g, "").trim();
+}
+
+// MARK: - Paste a document
+
+/** True when a pasted document would start the conversation (nothing there yet). */
+export function canPasteDocument(): boolean {
+  const conversation = selectedConversation();
+  return !conversation || (!conversation.document && conversation.turns.length === 0);
+}
+
+export function pasteDocument(text: string): void {
+  const markdown = text.replace(/\r\n?/g, "\n").trim();
+  if (!markdown || !canPasteDocument()) return;
+  const id = session ? conversationId() : ensureConversation().id;
+  setDocument(id, markdown + "\n");
+  appendTurn(id, { role: "edit", by: "user", scope: "document" });
+  const conversation = conversationById(id);
+  if (conversation && !conversation.title) {
+    setConversationTitle(id, titleFromUtterance(markdown.replace(/^#+\s*/, "")));
+  }
+  session?.sendContext([documentContext(markdown)]);
 }
 
 // MARK: - Selection → Live context

@@ -11,10 +11,10 @@ export type Turn =
   | { role: "user"; text: string; selection?: string }
   /** What the Live voice model said back (output transcription). */
   | { role: "assistant"; text: string }
-  /** The Live model edited the document via a tool call. */
-  | { role: "edit"; scope: "selection" | "document"; before?: string; after?: string }
-  /** A question handed off to the expert model, and its text answer. */
-  | { role: "expert"; question: string; answer: string; model: string };
+  /** The document changed: a voice-model tool call, or the user pasting one in. */
+  | { role: "edit"; by?: "voice" | "user"; scope: "selection" | "document"; before?: string; after?: string }
+  /** A request handed off to the expert model: what it changed and/or replied. */
+  | { role: "expert"; question: string; model: string; edits?: string[]; reply?: string };
 
 export interface Conversation {
   id: string;
@@ -23,7 +23,11 @@ export interface Conversation {
   updatedAt: string; // ISO 8601
   document: string;
   turns: Turn[];
+  /** Accumulated token usage and cost, split by model role. */
+  usage?: { voice?: UsageTotals; expert?: UsageTotals };
 }
+
+import type { UsageTotals } from "./usage";
 
 export interface TranscriptEntry {
   id: string;
@@ -31,6 +35,8 @@ export interface TranscriptEntry {
   text: string;
   /** For expert entries: the question that was handed off. */
   question?: string;
+  /** For expert entries: one-line summaries of its document edits. */
+  edits?: string[];
   /** For user entries: the passage that was highlighted while speaking. */
   selection?: string;
 }
@@ -48,10 +54,15 @@ export function conversationTranscript(conversation: Conversation | undefined): 
         return {
           id,
           role: "edit",
-          text: turn.scope === "selection" ? "Edited the highlighted text" : "Rewrote the document",
+          text:
+            turn.by === "user"
+              ? "You pasted in the document"
+              : turn.scope === "selection"
+                ? "Edited the highlighted text"
+                : "Rewrote the document",
         };
       case "expert":
-        return { id, role: "expert", text: turn.answer, question: turn.question };
+        return { id, role: "expert", text: turn.reply ?? (turn as { answer?: string }).answer ?? "", question: turn.question, edits: turn.edits };
     }
   });
 }
@@ -74,11 +85,19 @@ function serializeTurn(turn: Turn): string {
     case "assistant":
       return `Vito: ${turn.text}\n\n`;
     case "edit":
+      if (turn.by === "user") return `[The user pasted in the document]\n\n`;
       return turn.scope === "selection"
         ? `[Vito replaced the highlighted text «${turn.before ?? ""}» with «${turn.after ?? ""}»]\n\n`
         : `[Vito rewrote the whole document]\n\n`;
-    case "expert":
-      return `[Handed to expert] ${turn.question}\nExpert: ${turn.answer}\n\n`;
+    case "expert": {
+      let text = `[Handed to expert] ${turn.question}\n`;
+      for (const edit of turn.edits ?? []) text += `[Expert edited the document: ${edit}]\n`;
+      if (turn.reply) text += `Expert: ${turn.reply}\n`;
+      // Pre-tools turns stored the answer as `answer`.
+      const legacy = (turn as { answer?: string }).answer;
+      if (legacy) text += `Expert: ${legacy}\n`;
+      return text + "\n";
+    }
   }
 }
 

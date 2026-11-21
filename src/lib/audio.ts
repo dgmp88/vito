@@ -75,7 +75,6 @@ export class AudioPlayer {
   private gain?: GainNode;
   private nextTime = 0;
   private sources = new Set<AudioBufferSourceNode>();
-  private muted = false;
 
   constructor(private onSpeakingChange: (speaking: boolean) => void) {}
 
@@ -83,14 +82,8 @@ export class AudioPlayer {
   start(): void {
     this.ctx = new AudioContext();
     this.gain = this.ctx.createGain();
-    this.gain.gain.value = this.muted ? 0 : 1;
     this.gain.connect(this.ctx.destination);
     this.nextTime = 0;
-  }
-
-  setMuted(muted: boolean): void {
-    this.muted = muted;
-    if (this.gain) this.gain.gain.value = muted ? 0 : 1;
   }
 
   enqueue(base64: string, mimeType: string | undefined): void {
