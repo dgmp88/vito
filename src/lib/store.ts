@@ -1,6 +1,4 @@
-import { createStore, produce } from "solid-js/store";
-import { createEffect } from "solid-js";
-import { isServer } from "solid-js/web";
+import { createEffect, createSignal, createStore, onSettled } from "solid-js";
 import type { ChatMessage, Conversation } from "./types";
 
 const STORAGE_KEY = "vito.conversations.v1";
@@ -37,50 +35,62 @@ export function selectedConversation(): Conversation | undefined {
 
 // MARK: - Persistence (localStorage). Load once on mount, then autosave on change.
 
-export function loadFromStorage(): void {
-  if (isServer) return;
+function loadFromStorage(): void {
   try {
     const raw = localStorage.getItem(STORAGE_KEY);
     if (!raw) return;
     const parsed = JSON.parse(raw) as Conversation[];
-    if (Array.isArray(parsed)) setStore("conversations", parsed);
+    if (Array.isArray(parsed)) {
+      setStore(draft => {
+        draft.conversations = parsed;
+      });
+    }
   } catch {
     // Corrupt storage — start fresh rather than crash.
   }
 }
 
-/** Wire up autosave. Call inside a component's onMount so the effect has an owner. */
+/** Restore after hydration, then track changes for autosave. */
 export function setupPersistence(): void {
-  if (isServer) return;
-  createEffect(() => {
-    // Touch the field so the effect tracks it, then serialize.
-    const snapshot = store.conversations;
-    try {
-      localStorage.setItem(STORAGE_KEY, JSON.stringify(snapshot));
-    } catch {
-      // Quota or serialization failure — non-fatal for a local spike.
-    }
+  const [loaded, setLoaded] = createSignal(false);
+  onSettled(() => {
+    loadFromStorage();
+    setLoaded(true);
   });
+
+  createEffect(
+    () => loaded() ? JSON.stringify(store.conversations) : undefined,
+    snapshot => {
+      if (snapshot === undefined) return;
+      try {
+        localStorage.setItem(STORAGE_KEY, snapshot);
+      } catch {
+        // Quota or storage failure — non-fatal for a local spike.
+      }
+    }
+  );
 }
 
 // MARK: - Conversation management
 
 /** Start a fresh chat. Creation is deferred to the first utterance. */
 export function newConversation(): void {
-  setStore("selectedId", null);
+  setStore(draft => {
+    draft.selectedId = null;
+  });
 }
 
 export function selectConversation(id: string): void {
-  setStore("selectedId", id);
+  setStore(draft => {
+    draft.selectedId = id;
+  });
 }
 
 export function deleteConversation(id: string): void {
-  setStore(
-    produce(s => {
-      s.conversations = s.conversations.filter(c => c.id !== id);
-      if (s.selectedId === id) s.selectedId = null;
-    })
-  );
+  setStore(draft => {
+    draft.conversations = draft.conversations.filter(c => c.id !== id);
+    if (draft.selectedId === id) draft.selectedId = null;
+  });
 }
 
 /** Returns the selected conversation, lazily creating one on first speech. */
@@ -95,31 +105,25 @@ export function ensureConversation(): Conversation {
     updatedAt: now,
     messages: [],
   };
-  setStore(
-    produce(s => {
-      s.conversations.push(conversation);
-      s.selectedId = conversation.id;
-    })
-  );
+  setStore(draft => {
+    draft.conversations.push(conversation);
+    draft.selectedId = conversation.id;
+  });
   return conversation;
 }
 
 export function appendMessages(conversationId: string, messages: ChatMessage[]): void {
-  setStore(
-    produce(s => {
-      const conversation = s.conversations.find(c => c.id === conversationId);
-      if (!conversation) return;
-      conversation.messages.push(...messages);
-      conversation.updatedAt = new Date().toISOString();
-    })
-  );
+  setStore(draft => {
+    const conversation = draft.conversations.find(c => c.id === conversationId);
+    if (!conversation) return;
+    conversation.messages.push(...messages);
+    conversation.updatedAt = new Date().toISOString();
+  });
 }
 
 export function setConversationTitle(conversationId: string, title: string): void {
-  setStore(
-    produce(s => {
-      const conversation = s.conversations.find(c => c.id === conversationId);
-      if (conversation) conversation.title = title;
-    })
-  );
+  setStore(draft => {
+    const conversation = draft.conversations.find(c => c.id === conversationId);
+    if (conversation) conversation.title = title;
+  });
 }

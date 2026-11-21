@@ -3,7 +3,7 @@
 // live-preview / streaming signals the UI renders. Conversations themselves live
 // in the persisted store (store.ts); this module holds only ephemeral UI state.
 
-import { createSignal } from "solid-js";
+import { createSignal, flush } from "solid-js";
 import { respond } from "./agent";
 import { RealtimeTranscriber } from "./realtime";
 import {
@@ -135,6 +135,8 @@ async function stopAndProcess(): Promise<void> {
   setPhase("responding");
   resetStreamingState();
   try {
+    // Commit the new turn before reading the history for the request.
+    flush();
     const history = selectedConversation()?.messages ?? [];
     const appended = await respond(history, update => {
       setStreamedText(update.assistantText);

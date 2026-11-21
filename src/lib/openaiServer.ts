@@ -1,3 +1,4 @@
+import { markSafeError } from "@solidjs/web";
 import type { ChatMessage } from "./types";
 import { WRITE_DOCUMENT_TOOL } from "./types";
 
@@ -103,7 +104,7 @@ export async function streamChatCompletion(history: ChatMessage[]): Promise<Resp
       body: JSON.stringify(payload),
     });
   } catch (error) {
-    return rawJson(
+    return Response.json(
       { error: `Couldn't reach OpenAI: ${(error as Error).message}` },
       { status: 502 }
     );
@@ -111,13 +112,13 @@ export async function streamChatCompletion(history: ChatMessage[]): Promise<Resp
 
   if (!upstream.ok || !upstream.body) {
     const text = await upstream.text();
-    return rawResponse(text || JSON.stringify({ error: `HTTP ${upstream.status}` }), {
+    return new Response(text || JSON.stringify({ error: `HTTP ${upstream.status}` }), {
       status: upstream.status || 502,
       headers: { "Content-Type": "application/json" },
     });
   }
 
-  return rawResponse(upstream.body, {
+  return new Response(upstream.body, {
     status: 200,
     headers: {
       "Content-Type": "text/event-stream",
@@ -130,32 +131,9 @@ export async function streamChatCompletion(history: ChatMessage[]): Promise<Resp
 function openAIKey(): string {
   const apiKey = process.env.OPENAI_API_KEY;
   if (!apiKey) {
-    throw new Error("OPENAI_API_KEY is not set on the server. Add it to .env.");
+    throw markSafeError(new Error("OPENAI_API_KEY is not set on the server. Add it to .env."));
   }
   return apiKey;
-}
-
-function rawJson(data: unknown, init: ResponseInit): Response {
-  return rawResponse(JSON.stringify(data), {
-    ...init,
-    headers: withRawHeader(init.headers, { "Content-Type": "application/json" }),
-  });
-}
-
-function rawResponse(body: BodyInit | null, init: ResponseInit): Response {
-  return new Response(body, {
-    ...init,
-    headers: withRawHeader(init.headers),
-  });
-}
-
-function withRawHeader(headersInit: HeadersInit | undefined, extra?: Record<string, string>): Headers {
-  const headers = new Headers(headersInit);
-  headers.set("X-Content-Raw", "true");
-  for (const [key, value] of Object.entries(extra ?? {})) {
-    headers.set(key, value);
-  }
-  return headers;
 }
 
 function openAIError(text: string): string | null {

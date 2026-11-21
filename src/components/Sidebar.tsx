@@ -34,7 +34,7 @@ export default function Sidebar() {
           <For each={sortedConversations()}>
             {conv => (
               <button
-                classList={{
+                class={{
                   "chat-item": true,
                   "chat-item--active": conv.id === store.selectedId,
                 }}

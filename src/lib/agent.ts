@@ -1,4 +1,4 @@
-// Sends the conversation history to a SolidStart server function that proxies
+// Sends the conversation history to a Solid server function that proxies
 // GPT-5.5, then consumes the streamed SSE response, accumulating the assistant's
 // text reply and any `write_document` tool call. Mirrors the native app's
 // DocumentAgent.
@@ -26,21 +26,11 @@ interface PartialToolCall {
   args: string;
 }
 
-type RawServerFunction = {
-  url: string;
-};
-
 export async function respond(
   history: ChatMessage[],
   onProgress: (progress: AgentProgress) => void
 ): Promise<ChatMessage[]> {
-  const streamChatUrl = (streamChatCompletion as typeof streamChatCompletion & RawServerFunction)
-    .url;
-  const res = await fetch(streamChatUrl, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify([history]),
-  });
+  const res = await streamChatCompletion(history);
 
   if (!res.ok || !res.body) {
     throw new Error(await extractError(res));

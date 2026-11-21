@@ -51,15 +51,15 @@ export default function BottomBar() {
   return (
     <div class="bottom-bar">
       <button
-        classList={{ "record-btn": true, "record-btn--recording": isRecording() }}
+        class={{ "record-btn": true, "record-btn--recording": isRecording() }}
         onClick={toggleRecording}
         disabled={isBusy()}
       >
-        <span classList={{ "record-dot": true, "record-dot--pulse": isRecording() }} />
+        <span class={{ "record-dot": true, "record-dot--pulse": isRecording() }} />
         {recordLabel()}
       </button>
 
-      <span classList={{ status: true, "status--error": phase() === "error" }}>
+      <span class={{ status: true, "status--error": phase() === "error" }}>
         <Show when={phase() === "responding" && streamedTokens() > 0} fallback={statusText()}>
           <span class="status__tokens">{statusText()}</span>
         </Show>

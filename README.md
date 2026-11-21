@@ -5,7 +5,7 @@ transcribes in real time, and an LLM either replies in text or rewrites a
 markdown document in the side pane.
 
 This is a web port of the native macOS spike — same flow, same clean two-pane
-aesthetic — built on SolidStart with OpenAI's realtime transcription and GPT-5.5.
+aesthetic — built on Solid 2 with OpenAI's realtime transcription and GPT-5.5.
 
 ## What it does
 
@@ -18,7 +18,7 @@ aesthetic — built on SolidStart with OpenAI's realtime transcription and GPT-5
 
 ## Stack
 
-- **SolidStart** (SolidJS + Vinxi/Nitro), TypeScript
+- **Solid 2** with Vite start mode, TypeScript
 - **ASR**: OpenAI Realtime API, `gpt-realtime-whisper`, browser ↔ OpenAI over
   WebRTC. The mic track is sent directly to OpenAI; transcript events come back
   on a data channel.
@@ -30,16 +30,18 @@ aesthetic — built on SolidStart with OpenAI's realtime transcription and GPT-5
 ### Where the API key lives
 
 The OpenAI key is **server-side only** (`OPENAI_API_KEY`). The browser never
-sees it. Two SolidStart server functions in `src/lib/openaiServer.ts` use it:
+sees it. Two Solid server functions in `src/lib/openaiServer.ts` use it:
 
 - `createRealtimeTranscriptionToken()` mints a short-lived ephemeral client
   secret for the transcription session. The browser uses that secret (not your
   key) to open the WebRTC connection.
 - `streamChatCompletion()` proxies the streaming chat completion, attaching the
   system prompt and `write_document` tool, and pipes the SSE stream back to the
-  browser through SolidStart's generated server-function endpoint.
+  browser through Solid's generated server-function endpoint.
 
 ## Running
+
+Use Node.js 22.12 or newer.
 
 ```bash
 npm install
@@ -80,9 +82,9 @@ Today this lives in `localStorage`; swapping in a DB means persisting the same
 
 ```
 src/
-  app.tsx                    # Router root
+  app.tsx                    # Application root
   app.css                    # all styling (forest-green, macOS-flavored theme)
-  entry-client.tsx / entry-server.tsx
+  Document.tsx               # HTML shell for server rendering and hydration
   routes/
     index.tsx                # the whole app: sidebar + two panes + bottom bar
   lib/
