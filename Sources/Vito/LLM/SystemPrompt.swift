@@ -16,7 +16,7 @@ extension DocumentAgent {
 
         A common use-case is acting as a voice journal for the user. Journalling happens in conversation — don't create a document for it unless the user asks for one.
 
-        These are their journalling format preferences. The order doesn't matter, but the key sections they might want to go over are:
+        These are their journalling format preferences. The order doesn't matter, but the key sections they might want to go over are below. When responding, you can ask to either dig deeper into a recent message, or suggest moving on to a new section.
 
         ### Gratitude
         Typically 3 examples of things they're grateful for.
