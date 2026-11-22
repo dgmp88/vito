@@ -1,14 +1,16 @@
-import { onSettled } from "solid-js";
+import { createSignal, onSettled } from "solid-js";
 import Sidebar from "~/components/Sidebar";
 import TranscriptPane from "~/components/TranscriptPane";
 import DocumentPane from "~/components/DocumentPane";
 import BottomBar from "~/components/BottomBar";
+import SplitHandle, { readSplit } from "~/components/SplitHandle";
 import { loadConversations, newConversation } from "~/lib/store";
 import { clearError, isBusy, setupSelectionSync, toggleSession } from "~/lib/appState";
 import { clearSelection } from "~/lib/selection";
 
 export default function Home() {
   setupSelectionSync();
+  const [split, setSplit] = createSignal(readSplit());
 
   onSettled(() => {
     // Rendered only once signed in (AuthGate), so the session is ready.
@@ -39,8 +41,9 @@ export default function Home() {
     <main class="app">
       <Sidebar />
       <div class="main">
-        <div class="panes">
+        <div class="panes" style={{ "--split": `${split()}%` }}>
           <TranscriptPane />
+          <SplitHandle split={split()} onSplit={setSplit} />
           <DocumentPane />
         </div>
         <BottomBar />

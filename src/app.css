@@ -349,9 +349,39 @@ button:disabled {
 }
 
 .pane--transcript {
-  flex: 0 0 42%;
-  border-right: 1px solid var(--border);
+  flex: 0 0 var(--split, 42%);
   background: var(--bg);
+}
+
+/* 1px visible line with a wider invisible grab area. */
+.split-handle {
+  position: relative;
+  z-index: 1;
+  flex: 0 0 1px;
+  background: var(--border);
+  cursor: col-resize;
+  touch-action: none;
+  outline: none;
+  transition: background 0.12s ease;
+}
+
+.split-handle::before {
+  content: "";
+  position: absolute;
+  inset: 0 -4px;
+}
+
+.split-handle:hover,
+.split-handle:focus-visible,
+.split-handle--dragging {
+  background: var(--accent);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+
+/* Keep the col-resize cursor and suppress text selection anywhere mid-drag. */
+.panes:has(.split-handle--dragging) {
+  cursor: col-resize;
+  user-select: none;
 }
 
 .pane--document {
