@@ -11,7 +11,7 @@ import { createRemoteJWKSet, jwtVerify } from "jose";
 let jwks: ReturnType<typeof createRemoteJWKSet> | undefined;
 
 function authBaseUrl(): string {
-  const base = process.env.NEON_AUTH_URL || process.env.VITE_NEON_AUTH_URL;
+  const base = process.env.VITE_NEON_AUTH_URL;
   if (!base) throw new Error("Neon Auth is not configured on the server. Set VITE_NEON_AUTH_URL.");
   return base.replace(/\/+$/, "");
 }
