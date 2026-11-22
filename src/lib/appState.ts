@@ -120,7 +120,9 @@ async function startSession(): Promise<void> {
     onToolCalls: calls => {
       commitUser();
       commitAssistant();
-      for (const call of calls) handleToolCall(call);
+      // Handle after Solid has applied the turns just committed (store writes
+      // flush on a microtask), so tools like ask_expert read the full log.
+      queueMicrotask(() => calls.forEach(handleToolCall));
     },
     onToolCancellation: ids => ids.forEach(id => cancelledToolCalls.add(id)),
     onInterrupted: () => {
