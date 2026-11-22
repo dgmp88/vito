@@ -36,7 +36,7 @@ npm run db:migrate     # apply migrations and regenerate DB types
 npm run dev            # http://localhost:3000
 ```
 
-See `package.json` for other scripts and `.env.example` for optional settings.
+See `package.json` for other scripts and `.env.example` for what each setting is.
 
 > The mic needs a secure context (`localhost` or HTTPS). Use headphones if
 > speaker bleed makes Vito interrupt itself.
