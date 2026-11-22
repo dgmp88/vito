@@ -6,6 +6,7 @@
 .vinxi/
 .output/
 .nitro/
+.vercel/
 dist/
 
 # Dependencies

@@ -1,5 +1,6 @@
 import { fileURLToPath } from "node:url";
 import solid from "@solidjs/vite-plugin";
+import { nitro } from "nitro/vite";
 import { defineConfig, loadEnv } from "vite";
 
 export default defineConfig(({ command, mode }) => {
@@ -15,9 +16,12 @@ export default defineConfig(({ command, mode }) => {
     plugins: [
       solid({
         ssr: true,
-        start: { nodeServer: true },
+        start: true,
         serverFunctions: true,
       }),
+      // Deploy adapter. Picks the preset from the build environment: on Vercel
+      // it writes .vercel/output (Build Output API).
+      nitro(),
     ],
     resolve: {
       alias: { "~": fileURLToPath(new URL("./src", import.meta.url)) },

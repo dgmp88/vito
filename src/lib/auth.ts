@@ -1,4 +1,3 @@
-import { createInternalNeonAuth } from "@neondatabase/auth";
 import { createSignal } from "solid-js";
 
 // Neon Auth (https://neon.com/docs/auth/overview), email + password.
@@ -61,15 +60,18 @@ interface NeonAuth {
   getJWTToken(): Promise<string | null>;
 }
 
-let instance: NeonAuth | undefined;
+let instance: Promise<NeonAuth> | undefined;
 
-function neon(): NeonAuth {
-  if (!instance) instance = createInternalNeonAuth(authUrl) as unknown as NeonAuth;
+// Imported on first use, not at module load: the SDK only runs in the browser,
+// and it generates random values at load time, which Cloudflare Workers forbid
+// outside a request (this module is also bundled into the server for SSR).
+function neon(): Promise<NeonAuth> {
+  instance ??= import("@neondatabase/auth").then(m => m.createInternalNeonAuth(authUrl) as unknown as NeonAuth);
   return instance;
 }
 
-function auth(): NeonAuthClient {
-  return neon().adapter;
+async function auth(): Promise<NeonAuthClient> {
+  return (await neon()).adapter;
 }
 
 /**
@@ -77,7 +79,7 @@ function auth(): NeonAuthClient {
  * gone, return to the login screen and fail.
  */
 export async function authToken(): Promise<string> {
-  const token = await neon().getJWTToken().catch(() => null);
+  const token = await neon().then(n => n.getJWTToken()).catch(() => null);
   if (token) return token;
   setUser(null);
   throw new Error("Not authenticated. Please sign in.");
@@ -96,7 +98,7 @@ function toAuthUser(u: RawUser): AuthUser {
 /** Restore an existing session on app load. */
 export async function loadSession(): Promise<void> {
   try {
-    const { data } = await auth().getSession();
+    const { data } = await (await auth()).getSession();
     setUser(data?.user ? toAuthUser(data.user) : null);
   } catch {
     setUser(null);
@@ -108,7 +110,7 @@ export async function loadSession(): Promise<void> {
 /** Returns an error message, or null on success. */
 export async function signIn(email: string, password: string): Promise<string | null> {
   try {
-    const { data, error } = await auth().signIn.email({ email, password });
+    const { data, error } = await (await auth()).signIn.email({ email, password });
     if (error || !data?.user) return error?.message || "Sign in failed.";
     setUser(toAuthUser(data.user));
     return null;
@@ -120,7 +122,7 @@ export async function signIn(email: string, password: string): Promise<string | 
 /** Returns an error message, or null on success. */
 export async function signUp(name: string, email: string, password: string): Promise<string | null> {
   try {
-    const { data, error } = await auth().signUp.email({
+    const { data, error } = await (await auth()).signUp.email({
       // Neon Auth (Better Auth) requires a display name on sign-up.
       name: name.trim() || email.split("@")[0],
       email,
@@ -136,7 +138,7 @@ export async function signUp(name: string, email: string, password: string): Pro
 
 export async function signOut(): Promise<void> {
   try {
-    await auth().signOut();
+    await (await auth()).signOut();
   } finally {
     setUser(null);
   }
