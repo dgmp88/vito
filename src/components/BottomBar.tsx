@@ -2,14 +2,13 @@ import { Show } from "solid-js";
 import {
   errorMessage,
   expertJobs,
-  isBusy,
   isLive,
   notice,
   phase,
   speaking,
   toggleSession,
 } from "~/lib/appState";
-import { deleteConversation, selectedConversation } from "~/lib/store";
+import { selectedConversation } from "~/lib/store";
 import { syncError } from "~/lib/sync";
 import { formatCost, formatTokens, totalCost, type UsageTotals } from "~/lib/usage";
 
@@ -47,11 +46,6 @@ function CostChip(props: { label: string; usage: UsageTotals | undefined }) {
 }
 
 export default function BottomBar() {
-  const handleDelete = () => {
-    const conversation = selectedConversation();
-    if (conversation) deleteConversation(conversation.id);
-  };
-
   const statusText = () => {
     const expert = expertJobs().length > 0 ? "Expert is working…" : "";
     switch (phase()) {
@@ -93,6 +87,9 @@ export default function BottomBar() {
       >
         <span class={{ "record-dot": true, "record-dot--pulse": isLive() }} />
         {recordLabel()}
+        <span class="record-btn__hint" role="tooltip">
+          <kbd>Space</kbd> to start/stop
+        </span>
       </button>
 
       <span class={{ status: true, "status--error": phase() === "error" || (phase() !== "live" && !!syncError()) }}>
@@ -101,16 +98,10 @@ export default function BottomBar() {
         </Show>
       </span>
 
-      <span class="hint">Space to start/stop · Esc clears highlight</span>
-
       <span class="costs">
         <CostChip label="Voice" usage={usage()?.voice} />
         <CostChip label="Expert" usage={usage()?.expert} />
       </span>
-
-      <button class="icon-btn" onClick={handleDelete} disabled={!selectedConversation() || isBusy()}>
-        Delete
-      </button>
     </div>
   );
 }

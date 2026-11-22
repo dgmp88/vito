@@ -3,6 +3,7 @@ import { marked } from "marked";
 import { selectedConversation } from "~/lib/store";
 import { conversationTranscript } from "~/lib/types";
 import { expertJobs, liveAssistant, liveUser } from "~/lib/appState";
+import { SidebarToggle, sidebarOpen } from "~/components/Sidebar";
 
 /** Expert answers are markdown; render them (self-authored LLM output, spike-trusted). */
 function markdownHtml(text: string): string {
@@ -45,7 +46,12 @@ export default function TranscriptPane() {
 
   return (
     <section class="pane pane--transcript">
-      <div class="pane__header">Transcript</div>
+      <div class="pane__header">
+        <Show when={!sidebarOpen()}>
+          <SidebarToggle class="pane__sidebar-toggle" />
+        </Show>
+        Transcript
+      </div>
       <div class="pane__body" ref={body}>
         <Show
           when={showAnything()}

@@ -40,8 +40,8 @@ export default function Home() {
   return (
     <main class="app">
       <Sidebar />
-      <div class="main">
-        <div class="panes" style={{ "--split": `${split()}%` }}>
+      <div class="main" style={{ "--split": `${split()}%` }}>
+        <div class="panes">
           <TranscriptPane />
           <SplitHandle split={split()} onSplit={setSplit} />
           <DocumentPane />
