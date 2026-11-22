@@ -20,6 +20,11 @@
     "marked": "^15.0.0",
     "solid-js": "^2.0.3"
   },
+  "overrides": {
+    "better-auth": {
+      "solid-js": "$solid-js"
+    }
+  },
   "engines": {
     "node": ">=22.12.0"
   },
