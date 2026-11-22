@@ -1,4 +1,5 @@
 import { Show } from "solid-js";
+import MicPicker from "~/components/MicPicker";
 import {
   errorMessage,
   expertJobs,
@@ -91,6 +92,8 @@ export default function BottomBar() {
           <kbd>Space</kbd> to start/stop
         </span>
       </button>
+
+      <MicPicker />
 
       <span class={{ status: true, "status--error": phase() === "error" || (phase() !== "live" && !!syncError()) }}>
         <Show when={phase() === "live" && notice()} fallback={statusText()}>

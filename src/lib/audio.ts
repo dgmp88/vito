@@ -36,11 +36,27 @@ export class MicCapture {
   private stream?: MediaStream;
   private node?: AudioWorkletNode;
 
-  /** Starts the mic; `onChunk` receives base64 PCM16 and its MIME type. */
-  async start(onChunk: (base64: string, mimeType: string) => void): Promise<void> {
-    this.stream = await navigator.mediaDevices.getUserMedia({
-      audio: { echoCancellation: true, noiseSuppression: true, autoGainControl: true, channelCount: 1 },
-    });
+  /**
+   * Starts the mic; `onChunk` receives base64 PCM16 and its MIME type.
+   * `deviceId` picks an input (empty = system default); if that device is gone,
+   * falls back to the default.
+   */
+  async start(onChunk: (base64: string, mimeType: string) => void, deviceId = ""): Promise<void> {
+    const audio: MediaTrackConstraints = {
+      echoCancellation: true,
+      noiseSuppression: true,
+      autoGainControl: true,
+      channelCount: 1,
+    };
+    try {
+      this.stream = await navigator.mediaDevices.getUserMedia({
+        audio: deviceId ? { ...audio, deviceId: { exact: deviceId } } : audio,
+      });
+    } catch (error) {
+      const name = (error as DOMException).name;
+      if (!deviceId || (name !== "OverconstrainedError" && name !== "NotFoundError")) throw error;
+      this.stream = await navigator.mediaDevices.getUserMedia({ audio });
+    }
     const ctx = new AudioContext();
     this.ctx = ctx;
     // Created after async work (token fetch, permission prompt), so make sure it's running.

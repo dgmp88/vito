@@ -8,6 +8,7 @@ import type { FunctionCall, FunctionResponse } from "@google/genai";
 import { applyEdits } from "./docEdits";
 import { askExpert } from "./expert";
 import { LiveVoiceSession } from "./live";
+import { micDeviceId, refreshMicDevices, setMicDeviceId } from "./micDevice";
 import { DOCUMENT_RESULT, SELECTION_RESULT, expertOutcome } from "./messages";
 import {
   TOOL_ASK_EXPERT,
@@ -82,6 +83,18 @@ export function isBusy(): boolean {
   return phase() === "connecting" || phase() === "live" || expertJobs().length > 0;
 }
 
+/** Pick the input mic; applies immediately if a session is live. */
+export function chooseMic(id: string): void {
+  setMicDeviceId(id);
+  const live = session;
+  if (!live) return;
+  live.switchMic(id).catch(error => {
+    if (live !== session) return;
+    stopSession();
+    fail("Couldn't switch microphone", (error as Error).message);
+  });
+}
+
 export function toggleSession(): void {
   switch (phase()) {
     case "live":
@@ -145,8 +158,10 @@ async function startSession(): Promise<void> {
   session = live;
   setPhase("connecting");
   try {
-    await live.start(context);
+    await live.start(context, micDeviceId());
     if (session === live) setPhase("live");
+    // Device labels are only readable once mic permission has been granted.
+    void refreshMicDevices();
   } catch (error) {
     if (session === live) {
       stopSession();

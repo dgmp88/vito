@@ -701,6 +701,91 @@ button:disabled {
   background: #b83a3a;
 }
 
+/* Mic picker: icon button next to Record, opening a menu upwards. */
+.mic-picker {
+  position: relative;
+  flex: 0 0 auto;
+}
+
+.mic-picker__btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  padding: 7px 9px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text-secondary);
+  cursor: pointer;
+  transition: background 0.12s ease, color 0.12s ease;
+}
+
+.mic-picker__btn:hover,
+.mic-picker__btn--open {
+  background: var(--accent-soft);
+  color: var(--accent-strong);
+}
+
+.mic-picker__menu {
+  position: absolute;
+  bottom: calc(100% + 10px);
+  left: 0;
+  z-index: 10;
+  min-width: 240px;
+  max-width: 340px;
+  padding: 6px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--panel);
+  box-shadow: 0 8px 28px rgba(8, 28, 21, 0.14);
+  display: flex;
+  flex-direction: column;
+}
+
+.mic-picker__title {
+  padding: 4px 8px 6px;
+  font-size: 11px;
+  font-weight: 650;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-tertiary);
+}
+
+.mic-picker__item {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  padding: 7px 8px;
+  border: none;
+  border-radius: var(--radius-sm);
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  text-align: left;
+  cursor: pointer;
+}
+
+.mic-picker__item:hover {
+  background: var(--sidebar);
+}
+
+.mic-picker__item--selected {
+  font-weight: 600;
+}
+
+.mic-picker__check {
+  flex: 0 0 14px;
+  color: var(--accent);
+}
+
+.mic-picker__label {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
 .record-dot {
   width: 9px;
   height: 9px;

@@ -58,9 +58,9 @@ export class LiveVoiceSession {
 
   /**
    * Connects, sends `initialContext` (each string becomes one context message),
-   * then opens the mic. Call from a user gesture so audio playback is allowed.
+   * then opens the mic (`micDeviceId`, or the system default if empty). Call from a user gesture so audio playback is allowed.
    */
-  async start(initialContext: string[]): Promise<void> {
+  async start(initialContext: string[], micDeviceId = ""): Promise<void> {
     this.closedByUser = false;
     this.player.start();
     const { token, model } = await createLiveSession(await authToken());
@@ -68,16 +68,27 @@ export class LiveVoiceSession {
     this.model = model;
     await this.connect();
     if (initialContext.length > 0) this.sendContext(initialContext);
-    await this.mic.start((data, mimeType) => {
-      // Drop audio during the brief reconnect gap, and while input is paused.
-      if (this.reconnecting || this.inputPaused) return;
-      try {
-        this.session?.sendRealtimeInput({ audio: { data, mimeType } });
-      } catch {
-        /* socket closing; the close handler deals with it */
-      }
-    });
+    await this.mic.start(this.onMicChunk, micDeviceId);
   }
+
+  /** Switch to another input mid-session (empty id = system default). */
+  async switchMic(micDeviceId: string): Promise<void> {
+    if (this.closedByUser) return;
+    this.mic.stop();
+    await this.mic.start(this.onMicChunk, micDeviceId);
+    // Stopped while the new mic was opening.
+    if (this.closedByUser) this.mic.stop();
+  }
+
+  private onMicChunk = (data: string, mimeType: string): void => {
+    // Drop audio during the brief reconnect gap, and while input is paused.
+    if (this.reconnecting || this.inputPaused) return;
+    try {
+      this.session?.sendRealtimeInput({ audio: { data, mimeType } });
+    } catch {
+      /* socket closing; the close handler deals with it */
+    }
+  };
 
   /** Adds context messages without asking the model to respond. */
   sendContext(messages: string[]): void {
