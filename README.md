@@ -7,9 +7,7 @@ markdown document, and anything that needs real thought goes to a stronger
 
 ## How it works
 
-- Sign in, then start a live voice session and talk naturally. You can
-  interrupt Vito at any time.
-- Highlight text in the document to scope what you're asking about.
+- Optionally highlight text in the document to scope what you're asking about.
 - The voice model keeps its replies short. It makes small edits itself and
   hands anything harder to the expert model, which acts only through tool calls
   (edit the document, rewrite it, or reply in the transcript).
@@ -38,12 +36,14 @@ npm run dev            # http://localhost:3000
 
 See `package.json` for other scripts and `.env.example` for what each setting is.
 
-> The mic needs a secure context (`localhost` or HTTPS). Use headphones if
-> speaker bleed makes Vito interrupt itself.
-
 ## Where things live
 
 - `src/routes/`, `src/components/`: UI
 - `src/lib/`: client and server logic (Live client, expert agent, prompts,
   store and sync, auth, pricing)
 - `migrations/`: database schema
+- App is deployed on Vercel
+
+## Agent Tips
+
+- This is just an experiment, and we're running in YOLO mode - so by default it's fine to commit and push straight to main without branches unless the user suggests otherwise.
