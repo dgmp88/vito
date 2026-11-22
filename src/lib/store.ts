@@ -1,25 +1,44 @@
-import { createEffect, createSignal, createStore, onSettled } from "solid-js";
-import { migrateLegacyConversation, type Conversation, type Turn } from "./types";
-import { addUsage, emptyUsage, type UsageTotals } from "./usage";
+// Conversations: an in-memory Solid store, loaded from Neon Postgres after
+// sign-in. Every mutation updates the store immediately and enqueues the
+// matching write (sync.ts), so the UI never waits on the database.
 
-const STORAGE_KEY = "vito.conversations.v2";
-const LEGACY_STORAGE_KEY = "vito.conversations.v1";
+import { createStore, flush } from "solid-js";
+import { authToken } from "./auth";
+import { loadConversations as fetchConversations } from "./dbServer";
+import { clearQueue, enqueue } from "./sync";
+import type { Conversation, Turn } from "./types";
+import { addUsage, emptyUsage, type UsageTotals } from "./usage";
 
 interface StoreShape {
   conversations: Conversation[];
   /** The chat shown. `null` = a fresh, not-yet-created chat (the "New" state). */
   selectedId: string | null;
+  /** "loading" until the user's conversations have arrived. */
+  status: "loading" | "ready" | "error";
+  loadError: string;
 }
 
-const [store, setStore] = createStore<StoreShape>({
+const [store, setStoreLazily] = createStore<StoreShape>({
   conversations: [],
   selectedId: null,
+  status: "loading",
+  loadError: "",
 });
+
+/**
+ * Write, then flush. In Solid 2, store reads return the old value until the next
+ * flush; appState writes and then reads back in the same tick (create a chat,
+ * then title it; apply one expert edit, then the next), so make writes visible
+ * immediately. Only called from event handlers, never inside a computation.
+ */
+function setStore(update: (draft: StoreShape) => void): void {
+  setStoreLazily(update);
+  flush();
+}
 
 export { store };
 
 function uid(): string {
-  // crypto.randomUUID exists in browsers and Node 22; this only runs client-side.
   return crypto.randomUUID();
 }
 
@@ -35,52 +54,41 @@ export function selectedConversation(): Conversation | undefined {
   return store.conversations.find(c => c.id === store.selectedId);
 }
 
-// MARK: - Persistence (localStorage). Load once on mount, then autosave on change.
+export function conversationById(id: string): Conversation | undefined {
+  return store.conversations.find(c => c.id === id);
+}
 
-function loadFromStorage(): void {
+// MARK: - Loading
+
+/** Load the signed-in user's conversations. Call once after sign-in. */
+export async function loadConversations(): Promise<void> {
+  setStore(draft => {
+    draft.status = "loading";
+    draft.loadError = "";
+  });
   try {
-    const raw = localStorage.getItem(STORAGE_KEY);
-    if (raw) {
-      const parsed = JSON.parse(raw) as Conversation[];
-      if (Array.isArray(parsed)) setConversations(parsed);
-      return;
-    }
-    // One-time migration from the v1 (OpenAI chat-completions shaped) format.
-    const legacy = localStorage.getItem(LEGACY_STORAGE_KEY);
-    if (legacy) {
-      const parsed = JSON.parse(legacy);
-      if (Array.isArray(parsed)) setConversations(parsed.map(migrateLegacyConversation));
-    }
-  } catch {
-    // Corrupt storage — start fresh rather than crash.
+    const conversations = await fetchConversations(await authToken());
+    setStore(draft => {
+      draft.conversations = conversations;
+      draft.status = "ready";
+    });
+  } catch (error) {
+    setStore(draft => {
+      draft.status = "error";
+      draft.loadError = (error as Error).message;
+    });
   }
 }
 
-function setConversations(conversations: Conversation[]): void {
+/** Forget everything (on sign-out). */
+export function resetStore(): void {
+  clearQueue();
   setStore(draft => {
-    draft.conversations = conversations;
+    draft.conversations = [];
+    draft.selectedId = null;
+    draft.status = "loading";
+    draft.loadError = "";
   });
-}
-
-/** Restore after hydration, then track changes for autosave. */
-export function setupPersistence(): void {
-  const [loaded, setLoaded] = createSignal(false);
-  onSettled(() => {
-    loadFromStorage();
-    setLoaded(true);
-  });
-
-  createEffect(
-    () => loaded() ? JSON.stringify(store.conversations) : undefined,
-    snapshot => {
-      if (snapshot === undefined) return;
-      try {
-        localStorage.setItem(STORAGE_KEY, snapshot);
-      } catch {
-        // Quota or storage failure — non-fatal for a local spike.
-      }
-    }
-  );
 }
 
 // MARK: - Conversation management
@@ -103,6 +111,7 @@ export function deleteConversation(id: string): void {
     draft.conversations = draft.conversations.filter(c => c.id !== id);
     if (draft.selectedId === id) draft.selectedId = null;
   });
+  enqueue({ op: "deleteConversation", id });
 }
 
 /** Returns the selected conversation, lazily creating one on first speech. */
@@ -122,6 +131,7 @@ export function ensureConversation(): Conversation {
     draft.conversations.push(conversation);
     draft.selectedId = conversation.id;
   });
+  enqueue({ op: "createConversation", id: conversation.id, title: "", document: "", createdAt: now });
   return conversation;
 }
 
@@ -136,34 +146,31 @@ function updateConversation(conversationId: string, update: (conversation: Conve
 
 /** Appends a turn and returns its index. */
 export function appendTurn(conversationId: string, turn: Turn): number {
+  const stored = { ...turn, id: turn.id ?? uid() };
   let index = -1;
   updateConversation(conversationId, conversation => {
-    index = conversation.turns.push(turn) - 1;
+    index = conversation.turns.push(stored) - 1;
   });
+  if (index >= 0) enqueue({ op: "putTurn", conversationId, turn: stored });
   return index;
 }
 
+/** Rewrites a turn in place (keeps its id). */
 export function replaceTurn(conversationId: string, index: number, turn: Turn): void {
+  let stored: (Turn & { id: string }) | undefined;
   updateConversation(conversationId, conversation => {
-    if (index >= 0 && index < conversation.turns.length) conversation.turns[index] = turn;
+    if (index < 0 || index >= conversation.turns.length) return;
+    stored = { ...turn, id: conversation.turns[index].id ?? uid() };
+    conversation.turns[index] = stored;
   });
+  if (stored) enqueue({ op: "putTurn", conversationId, turn: stored });
 }
 
 export function setDocument(conversationId: string, document: string): void {
   updateConversation(conversationId, conversation => {
     conversation.document = document;
   });
-}
-
-export function recordUsage(conversationId: string, role: "voice" | "expert", usage: UsageTotals): void {
-  updateConversation(conversationId, conversation => {
-    conversation.usage ??= {};
-    conversation.usage[role] = addUsage(conversation.usage[role] ?? emptyUsage(), usage);
-  });
-}
-
-export function conversationById(id: string): Conversation | undefined {
-  return store.conversations.find(c => c.id === id);
+  enqueue({ op: "updateConversation", id: conversationId, document });
 }
 
 export function setConversationTitle(conversationId: string, title: string): void {
@@ -171,4 +178,13 @@ export function setConversationTitle(conversationId: string, title: string): voi
     const conversation = draft.conversations.find(c => c.id === conversationId);
     if (conversation) conversation.title = title;
   });
+  enqueue({ op: "updateConversation", id: conversationId, title });
+}
+
+export function recordUsage(conversationId: string, kind: "voice" | "expert", model: string, usage: UsageTotals): void {
+  updateConversation(conversationId, conversation => {
+    conversation.usage ??= {};
+    conversation.usage[kind] = addUsage(conversation.usage[kind] ?? emptyUsage(), usage);
+  });
+  enqueue({ op: "recordUsage", conversationId, kind, model, usage });
 }

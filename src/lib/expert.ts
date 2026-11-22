@@ -3,12 +3,13 @@
 
 import type { ExpertEvent } from "./expertAgent";
 import type { ExpertRequest } from "./expertPrompt";
+import { authToken } from "./auth";
 import { streamExpert } from "./geminiServer";
 
 type Handlers = (event: Exclude<ExpertEvent, { type: "error" }>) => void;
 
 export async function askExpert(request: ExpertRequest, onEvent: Handlers): Promise<void> {
-  const res = await streamExpert(request);
+  const res = await streamExpert(await authToken(), request);
   if (!res.ok || !res.body) {
     throw new Error((await res.text().catch(() => "")) || `Expert request failed (HTTP ${res.status}).`);
   }

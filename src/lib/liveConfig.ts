@@ -53,21 +53,10 @@ const LIVE_TOOLS: FunctionDeclaration[] = [
   {
     name: TOOL_ASK_EXPERT,
     description:
-      "Hand a request that needs careful thought to a stronger model. It edits the document " +
-      "directly and/or answers in text on screen; the outcome is returned to you when ready.",
-    behavior: Behavior.NON_BLOCKING,
-    parameters: {
-      type: Type.OBJECT,
-      properties: {
-        question: {
-          type: Type.STRING,
-          description:
-            "A self-contained statement of what the user wants, resolving references " +
-            "like 'this' or 'the second paragraph'.",
-        },
-      },
-      required: ["question"],
-    },
+      "Hand the user's latest request to a stronger model, which reads it directly from the " +
+      "conversation. Takes no arguments. It edits the document directly and/or answers in text " +
+      "on screen. The user's mic is muted until it finishes; the outcome is then returned to you.",
+    behavior: Behavior.BLOCKING,
   },
 ];
 

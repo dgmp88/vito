@@ -13,7 +13,9 @@ function markdownHtml(text: string): string {
 function ExpertBody(props: { question: string; edits: string[]; reply: string; thinking?: string }) {
   return (
     <div class="entry__text expert">
-      <div class="expert__question">{props.question}</div>
+      <Show when={props.question}>
+        <div class="expert__question">{props.question}</div>
+      </Show>
       <For each={props.edits}>{edit => <div class="expert__edit">{edit}</div>}</For>
       <Show when={props.reply}>
         {/* eslint-disable-next-line solid/no-innerhtml */}

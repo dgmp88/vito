@@ -6,15 +6,32 @@
 // serializes them in order, so keeping the log append-only keeps the prompt
 // prefix stable and lets implicit caching hit (see expertServer / geminiServer).
 
-export type Turn =
+export type Turn = TurnBody & {
+  /** Stable id (assigned by the store on append); also the persisted message id. */
+  id?: string;
+};
+
+type TurnBody =
   /** Something the user said (Live input transcription). */
   | { role: "user"; text: string; selection?: string }
   /** What the Live voice model said back (output transcription). */
   | { role: "assistant"; text: string }
-  /** The document changed: a voice-model tool call, or the user pasting one in. */
-  | { role: "edit"; by?: "voice" | "user"; scope: "selection" | "document"; before?: string; after?: string }
+  /**
+   * The document changed: a voice-model tool call, or the user pasting one in.
+   * `after` is the new markdown (the replacement for a selection edit, the whole
+   * document otherwise).
+   */
+  | {
+      role: "edit";
+      by?: "voice" | "user";
+      scope: "selection" | "document";
+      before?: string;
+      after?: string;
+      /** The Live tool call id, when the edit came from one. */
+      callId?: string;
+    }
   /** A request handed off to the expert model: what it changed and/or replied. */
-  | { role: "expert"; question: string; model: string; edits?: string[]; reply?: string };
+  | { role: "expert"; question: string; model: string; edits?: string[]; reply?: string; callId?: string };
 
 export interface Conversation {
   id: string;
@@ -62,7 +79,7 @@ export function conversationTranscript(conversation: Conversation | undefined): 
                 : "Rewrote the document",
         };
       case "expert":
-        return { id, role: "expert", text: turn.reply ?? (turn as { answer?: string }).answer ?? "", question: turn.question, edits: turn.edits };
+        return { id, role: "expert", text: turn.reply ?? "", question: turn.question, edits: turn.edits };
     }
   });
 }
@@ -90,12 +107,9 @@ function serializeTurn(turn: Turn): string {
         ? `[Vito replaced the highlighted text «${turn.before ?? ""}» with «${turn.after ?? ""}»]\n\n`
         : `[Vito rewrote the whole document]\n\n`;
     case "expert": {
-      let text = `[Handed to expert] ${turn.question}\n`;
+      let text = turn.question ? `[Handed to expert] ${turn.question}\n` : `[Handed to expert]\n`;
       for (const edit of turn.edits ?? []) text += `[Expert edited the document: ${edit}]\n`;
       if (turn.reply) text += `Expert: ${turn.reply}\n`;
-      // Pre-tools turns stored the answer as `answer`.
-      const legacy = (turn as { answer?: string }).answer;
-      if (legacy) text += `Expert: ${legacy}\n`;
       return text + "\n";
     }
   }
@@ -105,59 +119,4 @@ function serializeTurn(turn: Turn): string {
 export function titleFromUtterance(utterance: string): string {
   const firstLine = utterance.split(/\r?\n/, 1)[0].trim();
   return firstLine.length > 50 ? firstLine.slice(0, 50).trim() + "…" : firstLine;
-}
-
-// MARK: - Migration from v1 (OpenAI chat-completions shaped) storage.
-
-interface LegacyMessage {
-  role: string;
-  content: string | null;
-  tool_calls?: { function?: { name?: string; arguments?: string } }[];
-}
-
-interface LegacyConversation {
-  id: string;
-  title: string;
-  createdAt: string;
-  updatedAt: string;
-  messages: LegacyMessage[];
-}
-
-export function migrateLegacyConversation(legacy: LegacyConversation): Conversation {
-  const turns: Turn[] = [];
-  let document = "";
-  for (const message of legacy.messages ?? []) {
-    if (message.role === "user" && message.content) {
-      turns.push({ role: "user", text: message.content });
-    } else if (message.role === "assistant") {
-      const markdown = legacyMarkdown(message);
-      if (markdown !== null) {
-        document = markdown;
-        turns.push({ role: "edit", scope: "document" });
-      } else if (message.content?.trim()) {
-        turns.push({ role: "assistant", text: message.content.trim() });
-      }
-    }
-  }
-  return {
-    id: legacy.id,
-    title: legacy.title,
-    createdAt: legacy.createdAt,
-    updatedAt: legacy.updatedAt,
-    document,
-    turns,
-  };
-}
-
-function legacyMarkdown(message: LegacyMessage): string | null {
-  for (const call of message.tool_calls ?? []) {
-    if (call.function?.name !== "write_document") continue;
-    try {
-      const args = JSON.parse(call.function.arguments ?? "") as { markdown?: unknown };
-      if (typeof args.markdown === "string") return args.markdown;
-    } catch {
-      /* ignore */
-    }
-  }
-  return null;
 }

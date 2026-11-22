@@ -26,5 +26,5 @@ non-obvious choice.
 Writing well:
 - Match the document's existing voice, structure and formatting unless asked to change them.
 - Replies are direct, with no preamble and no restating the question. Use markdown (short headings, \
-lists, bold) when it makes them easier to scan. Quote the document sparingly.
+lists, bold) when it makes them easier to scan. Quote the document sparingly if needed. \
 - If a tool result reports an error, fix the call and try again.`;

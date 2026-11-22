@@ -7,6 +7,8 @@ handed to a stronger model that edits the document directly or replies in text.
 
 ## What it does
 
+0. **Sign in** with email and password (Neon Auth). Conversations are stored per
+   user in Neon Postgres.
 1. Press **Record** (or hit **Space**) to open a live session. Talk naturally:
    turns are detected automatically (server-side VAD), and you can interrupt
    Vito mid-sentence. Press **Stop** to end the session.
@@ -17,7 +19,8 @@ handed to a stronger model that edits the document directly or replies in text.
    - `replace_selection`: a quick rewrite of exactly the highlighted text,
    - `write_document`: a quick change to the whole document,
    - `ask_expert`: hand anything that needs thought (questions, feedback,
-     drafting, restructuring) to `gemini-4-neon`,
+     drafting, restructuring) to `gemini-4-neon`. Your mic is muted until it
+     finishes,
    - or a few spoken words for chit-chat.
 4. Starting a fresh chat? **Paste** (⌘V) a document anywhere to make it the
    conversation's document before you start talking.
@@ -35,13 +38,16 @@ either one for input, cached, output, and reasoning tokens and cost.
 - **Expert**: `gemini-4-neon` (thinking level `high`) via
   `generateContentStream`, in tool-only mode. Events stream to the browser as
   NDJSON.
-- **State**: conversations persisted to **localStorage** (see
-  [Data model](#data-model)).
+- **Auth**: Neon Auth (email + password) via `@neondatabase/auth`. The browser
+  gets a session JWT; every server function verifies it against Neon Auth's
+  JWKS (`src/lib/authServer.ts`).
+- **State**: Neon Postgres via **Kysely** over `@neondatabase/serverless`.
+  Types are generated with **kysely-codegen** (see [Data model](#data-model)).
 
 ### Where the API key lives
 
 `GEMINI_API_KEY` is **server-side only**. Two server functions in
-`src/lib/geminiServer.ts` use it:
+`src/lib/geminiServer.ts` use it, and both require a signed-in user:
 
 - `createLiveSession()` mints a single-use **ephemeral token** with the whole
   Live config (system prompt, tools, VAD, transcription, context compression)
@@ -62,9 +68,9 @@ Neon acts **only through tool calls** (function calling mode `ANY`):
 Edits are validated against a working copy on the server. If any call fails
 (e.g. a `find` that doesn't match), the errors go back to the model for another
 round, up to 3. The client then re-applies accepted edits to the *current*
-document, since the voice model may have changed it in the meantime. When done,
-the voice model gets the updated `[Document]` and a `SILENT` tool response
-summarizing what happened.
+document, as a safety net. When done, the voice model gets the updated
+`[Document]` and a tool response summarizing what happened, which it confirms
+in a word or two.
 
 ### Prompts
 
@@ -78,10 +84,11 @@ summarizing what happened.
   selection are sent as `sendClientContent({ turnComplete: false })` messages
   tagged `[Document]`, `[History]`, and `[Selection]`. They add context without
   triggering a reply. Selection changes are synced (debounced) while live.
-- **Tools**: the edit tools are `BLOCKING`, so the model confirms only after the
-  edit lands. `ask_expert` is `NON_BLOCKING`: the model keeps talking while Neon
-  thinks, and the answer goes back as a `SILENT` tool response, so the model can
-  use it in follow-ups without reading it aloud.
+- **Tools**: all tools are `BLOCKING`, so the model confirms only after the
+  edit lands or the expert finishes. While `ask_expert` runs, mic audio stops
+  being sent (`audioStreamEnd`, then nothing), so speech can't interrupt and
+  cancel the call. It also keeps each tool result directly after its call in
+  the log.
 - **Long sessions**: sliding-window context compression is on. Connections
   last about 10 minutes; on `goAway` the client reconnects with the latest
   session-resumption handle, reusing the same token.
@@ -110,13 +117,18 @@ testing, hits weren't guaranteed even with a shared prefix of 4.7k–9k tokens.
 npm install
 
 cp .env.example .env
-# edit .env and set GEMINI_API_KEY=... (aistudio.google.com)
+# edit .env and set:
+#   GEMINI_API_KEY=...       (aistudio.google.com)
+#   VITE_NEON_AUTH_URL=...   (Neon Console → project → Auth)
+#   DATABASE_URL=...         (Neon Console → project → Connection details)
 
+npm run db:migrate   # apply migrations, regenerate src/lib/db/schema.ts
 npm run dev          # http://localhost:3000
 ```
 
 Other scripts: `npm run build` (production build), `npm start` (serve the
-build), `npm run typecheck`.
+build), `npm run typecheck`, `npm run db:codegen` (regenerate DB types only),
+`npm run db:migrate -- down` (roll back the latest migration).
 
 > Microphone access requires a secure context. `localhost` counts as secure;
 > elsewhere, use HTTPS. Use headphones if echo cancellation struggles. Speaker
@@ -137,9 +149,10 @@ buckets: input, cached, output, and reasoning.
   priced separately using the modality breakdown.
 - **Expert**: summed across the agent's rounds.
 
-Cost is computed when usage is recorded, using that model's pricing, and
-accumulated on the conversation (`usage.voice`, `usage.expert`), so totals stay
-right if models or prices change. Update `PRICING` when Google's prices change.
+Cost is computed when usage is recorded, using that model's pricing, and stored
+as one `usage_events` row per model call, so totals stay right if models or
+prices change. Conversation totals (`usage.voice`, `usage.expert`) are summed on
+load. Update `PRICING` when Google's prices change.
 
 ## Data model
 
@@ -154,7 +167,32 @@ See `src/lib/types.ts`:
   sessions, and is serialized deterministically for the expert prompt, which is
   what keeps that prompt's prefix stable.
 
-v1 conversations (OpenAI chat-completions shape) are migrated on first load.
+### Storage
+
+Schema: `migrations/` (Kysely migrations). Generated types:
+`src/lib/db/schema.ts`. The shapes of the jsonb columns live in
+`src/lib/db/json.ts`, wired in through `.kysely-codegenrc.json`.
+
+- `conversations`: `id, user_id, title, document, created_at, updated_at`.
+  `document` is the current markdown and is authoritative.
+- `messages`: OpenAI chat-completions shape (`role`, `content`, `tool_calls`,
+  `tool_call_id`) plus `metadata` jsonb for Vito-only fields, ordered by `seq`.
+  `src/lib/messages.ts` maps turns to messages and back:
+
+  | Turn | Messages |
+  |---|---|
+  | `user` | `user` (`metadata.selection`) |
+  | `assistant` | `assistant` |
+  | `edit` (voice) | `assistant` calling `replace_selection` / `write_document`, then `tool` |
+  | `edit` (paste) | `system`: "The user pasted in this document: …" (`metadata.kind = "paste"`) |
+  | `expert` | `assistant` calling `ask_expert({ question })`, then `tool` with `{ edits_made, reply_shown_to_user }` |
+
+- `usage_events`: one row per billed model call (tokens and cost per bucket).
+
+Writes go through a client queue (`src/lib/sync.ts`). The store updates
+immediately, and ops are batched, coalesced, and applied in order in one
+transaction by `applySync` (`src/lib/dbServer.ts`). Each op is checked against
+the conversations the caller owns.
 
 ## Layout
 
@@ -164,6 +202,11 @@ src/
   routes/index.tsx           # the whole app: sidebar + two panes + bottom bar
   lib/
     geminiServer.ts          # server functions: Live token minting + expert streaming
+    dbServer.ts              # server functions: load conversations, apply write batches
+    db/                      # Kysely client, generated schema, jsonb column types
+    messages.ts              # Turn ↔ chat-completions message mapping
+    auth.ts  authServer.ts   # Neon Auth client / JWT verification (server)
+    sync.ts                  # client write queue
     prompts/voice.ts         # Live model system prompt
     prompts/expert.ts        # expert system prompt
     liveConfig.ts            # Live tools, VAD, transcription, context message builders
@@ -176,9 +219,11 @@ src/
     expert.ts                # NDJSON consumer for the expert stream
     selection.ts             # highlight → markdown source span mapping
     appState.ts              # orchestration: transcripts → turns, tools, handoffs
-    store.ts                 # reactive store + localStorage persistence
+    store.ts                 # reactive store, loaded from / written to the DB
     types.ts                 # Conversation / Turn + projections
   components/
-    Sidebar.tsx  TranscriptPane.tsx  DocumentPane.tsx  BottomBar.tsx
+    AuthGate.tsx  Sidebar.tsx  TranscriptPane.tsx  DocumentPane.tsx  BottomBar.tsx
+migrations/                  # Kysely migrations (npm run db:migrate)
+scripts/migrate.ts
 public/logo.svg
 ```

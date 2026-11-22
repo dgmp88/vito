@@ -10,6 +10,7 @@ import {
   toggleSession,
 } from "~/lib/appState";
 import { deleteConversation, selectedConversation } from "~/lib/store";
+import { syncError } from "~/lib/sync";
 import { formatCost, formatTokens, totalCost, type UsageTotals } from "~/lib/usage";
 
 /** "Voice $0.012" with a hover card breaking the cost down by token type. */
@@ -57,13 +58,14 @@ export default function BottomBar() {
       case "connecting":
         return "Connecting…";
       case "live": {
-        const voice = speaking() ? "Speaking…" : "Listening…";
-        return [voice, expert].filter(Boolean).join(" · ");
+        // The mic is muted while the (blocking) expert call runs.
+        if (expert) return `${expert} · mic muted`;
+        return speaking() ? "Speaking…" : "Listening…";
       }
       case "error":
         return errorMessage();
       default:
-        return expert || notice() || "Ready";
+        return expert || syncError() || notice() || "Ready";
     }
   };
 
@@ -93,7 +95,7 @@ export default function BottomBar() {
         {recordLabel()}
       </button>
 
-      <span class={{ status: true, "status--error": phase() === "error" }}>
+      <span class={{ status: true, "status--error": phase() === "error" || (phase() !== "live" && !!syncError()) }}>
         <Show when={phase() === "live" && notice()} fallback={statusText()}>
           {statusText()} · {notice()}
         </Show>

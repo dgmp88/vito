@@ -1,0 +1,21 @@
+{
+  "dialect": "postgres",
+  "url": "env(DATABASE_URL)",
+  "envFile": ".env",
+  "outFile": "src/lib/db/schema.ts",
+  "defaultSchemas": ["public"],
+  "includePattern": "public.*",
+  "excludePattern": "public.kysely_*",
+  "customImports": {
+    "ToolCall": "./json#ToolCall",
+    "MessageMetadata": "./json#MessageMetadata"
+  },
+  "overrides": {
+    "columns": {
+      "messages.role": "\"system\" | \"user\" | \"assistant\" | \"tool\"",
+      "messages.tool_calls": "ColumnType<ToolCall[] | null, string | null, string | null>",
+      "messages.metadata": "ColumnType<MessageMetadata, string | undefined, string>",
+      "usage_events.kind": "\"voice\" | \"expert\""
+    }
+  }
+}

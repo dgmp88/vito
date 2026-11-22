@@ -3,15 +3,17 @@ import Sidebar from "~/components/Sidebar";
 import TranscriptPane from "~/components/TranscriptPane";
 import DocumentPane from "~/components/DocumentPane";
 import BottomBar from "~/components/BottomBar";
-import { newConversation, setupPersistence } from "~/lib/store";
+import { loadConversations, newConversation } from "~/lib/store";
 import { clearError, isBusy, setupSelectionSync, toggleSession } from "~/lib/appState";
 import { clearSelection } from "~/lib/selection";
 
 export default function Home() {
-  setupPersistence();
   setupSelectionSync();
 
   onSettled(() => {
+    // Rendered only once signed in (AuthGate), so the session is ready.
+    void loadConversations();
+
     const onKeyDown = (e: KeyboardEvent) => {
       // Space toggles the session (preventDefault stops it also activating a focused button).
       if (e.code === "Space" && !e.metaKey && !e.ctrlKey && !e.altKey) {

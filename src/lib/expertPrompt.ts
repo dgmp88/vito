@@ -85,10 +85,12 @@ export function expertSystemInstruction(document: string): string {
 
 export function expertContents(request: ExpertRequest): Content[] {
   const log = serializeTurns(request.turns);
+  const ask = request.question
+    ? `Request: ${request.question}`
+    : "Handle the user's latest message in the conversation above.";
   const handoff = request.selection
-    ? `<handoff>\nThe user has this text highlighted in the document:\n«${request.selection}»\n\n` +
-      `Request: ${request.question}\n</handoff>`
-    : `<handoff>\nRequest: ${request.question}\n</handoff>`;
+    ? `<handoff>\nThe user has this text highlighted in the document:\n«${request.selection}»\n\n${ask}\n</handoff>`
+    : `<handoff>\n${ask}\n</handoff>`;
   return [
     {
       role: "user",

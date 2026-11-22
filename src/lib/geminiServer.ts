@@ -1,4 +1,5 @@
-// Server functions. The Gemini API key never leaves the server:
+// Server functions. Both require a signed-in user (Neon Auth JWT, verified in
+// authServer.ts). The Gemini API key never leaves the server:
 //   - createLiveSession() mints a single-use ephemeral token with the Live
 //     session config (prompt, tools, VAD, transcription) locked in.
 //   - streamExpert() runs the expert handoff (tool-calling loop on Gemini 4 Neon)
@@ -24,8 +25,10 @@ function gemini(): GoogleGenAI {
   return client;
 }
 
-export async function createLiveSession(): Promise<{ token: string; model: string }> {
+export async function createLiveSession(authToken: string): Promise<{ token: string; model: string }> {
   "use server";
+  const { verifyUser } = await import("./authServer");
+  await verifyUser(authToken);
 
   const now = Date.now();
   try {
@@ -47,8 +50,10 @@ export async function createLiveSession(): Promise<{ token: string; model: strin
   }
 }
 
-export async function streamExpert(request: ExpertRequest): Promise<Response> {
+export async function streamExpert(authToken: string, request: ExpertRequest): Promise<Response> {
   "use server";
+  const { verifyUser } = await import("./authServer");
+  await verifyUser(authToken);
 
   const ai = gemini();
   const encoder = new TextEncoder();

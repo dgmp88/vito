@@ -19,6 +19,7 @@ import {
   type UsageMetadata,
 } from "@google/genai";
 import { AudioPlayer, MicCapture } from "./audio";
+import { authToken } from "./auth";
 import { createLiveSession } from "./geminiServer";
 
 export interface LiveCallbacks {
@@ -49,6 +50,7 @@ export class LiveVoiceSession {
   private resumeHandle?: string;
   private reconnecting = false;
   private closedByUser = false;
+  private inputPaused = false;
 
   constructor(private callbacks: LiveCallbacks) {
     this.player = new AudioPlayer(speaking => callbacks.onSpeakingChange(speaking));
@@ -61,13 +63,14 @@ export class LiveVoiceSession {
   async start(initialContext: string[]): Promise<void> {
     this.closedByUser = false;
     this.player.start();
-    const { token, model } = await createLiveSession();
+    const { token, model } = await createLiveSession(await authToken());
     this.token = token;
     this.model = model;
     await this.connect();
     if (initialContext.length > 0) this.sendContext(initialContext);
     await this.mic.start((data, mimeType) => {
-      if (this.reconnecting) return; // drop audio during the brief reconnect gap
+      // Drop audio during the brief reconnect gap, and while input is paused.
+      if (this.reconnecting || this.inputPaused) return;
       try {
         this.session?.sendRealtimeInput({ audio: { data, mimeType } });
       } catch {
@@ -82,6 +85,22 @@ export class LiveVoiceSession {
       turns: messages.map(text => ({ role: "user", parts: [{ text }] })),
       turnComplete: false,
     });
+  }
+
+  /**
+   * Stop (or resume) sending mic audio, e.g. while a blocking tool call is
+   * running, so speech can't interrupt it. The mic itself stays open.
+   */
+  setInputPaused(paused: boolean): void {
+    if (paused === this.inputPaused) return;
+    this.inputPaused = paused;
+    if (!paused) return;
+    try {
+      // Tell the server the stream has stopped so it flushes any buffered audio.
+      this.session?.sendRealtimeInput({ audioStreamEnd: true });
+    } catch {
+      /* socket closing */
+    }
   }
 
   sendToolResponses(responses: FunctionResponse[]): void {

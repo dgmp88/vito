@@ -6,11 +6,17 @@
     "build": "vite build",
     "start": "node --env-file-if-exists=.env dist/server/node.js",
     "preview": "vite preview",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "db:migrate": "node --env-file=.env scripts/migrate.ts && npm run db:codegen",
+    "db:codegen": "kysely-codegen"
   },
   "dependencies": {
     "@google/genai": "^3.6.1",
+    "@neondatabase/auth": "^0.4.2-beta",
+    "@neondatabase/serverless": "^1.2.1",
     "@solidjs/web": "^2.0.3",
+    "jose": "^6.2.18",
+    "kysely": "^0.28.20",
     "marked": "^15.0.0",
     "solid-js": "^2.0.3"
   },
@@ -20,6 +26,8 @@
   "devDependencies": {
     "@solidjs/vite-plugin": "^3.0.1",
     "@types/node": "^22.10.0",
+    "kysely-codegen": "^0.20.0",
+    "pg": "^8.23.1",
     "typescript": "^5.7.0",
     "vite": "^8.3.8"
   }

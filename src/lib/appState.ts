@@ -5,10 +5,10 @@
 
 import { createEffect, createSignal } from "solid-js";
 import type { FunctionCall, FunctionResponse } from "@google/genai";
-import { FunctionResponseScheduling } from "@google/genai";
 import { applyEdits } from "./docEdits";
 import { askExpert } from "./expert";
 import { LiveVoiceSession } from "./live";
+import { DOCUMENT_RESULT, SELECTION_RESULT, expertOutcome } from "./messages";
 import {
   TOOL_ASK_EXPERT,
   TOOL_REPLACE_SELECTION,
@@ -68,6 +68,8 @@ let pendingUser = "";
 let pendingAssistant = "";
 const cancelledToolCalls = new Set<string>();
 let lastSentSelection: string | null = null;
+/** Expert calls in flight. A plain counter: Solid 2 signal reads lag writes until flush. */
+let activeExpertCalls = 0;
 let noticeTimer: ReturnType<typeof setTimeout> | undefined;
 
 export function isLive(): boolean {
@@ -131,7 +133,7 @@ async function startSession(): Promise<void> {
       currentUserTurn = -1;
     },
     onSpeakingChange: setSpeaking,
-    onUsage: (model, meta) => recordUsage(conversationId(), "voice", liveUsage(model, meta)),
+    onUsage: (model, meta) => recordUsage(conversationId(), "voice", model, liveUsage(model, meta)),
     onError: message => {
       stopSession();
       fail("Live session error", message);
@@ -214,10 +216,10 @@ function handleToolCall(call: FunctionCall): void {
   const args = (call.args ?? {}) as Record<string, unknown>;
   switch (call.name) {
     case TOOL_REPLACE_SELECTION:
-      respond(call, replaceSelection(String(args.markdown ?? "")));
+      respond(call, replaceSelection(String(args.markdown ?? ""), call.id));
       break;
     case TOOL_WRITE_DOCUMENT:
-      respond(call, writeDocument(String(args.markdown ?? "")));
+      respond(call, writeDocument(String(args.markdown ?? ""), call.id));
       break;
     case TOOL_ASK_EXPERT:
       void runExpert(call, String(args.question ?? ""));
@@ -227,14 +229,13 @@ function handleToolCall(call: FunctionCall): void {
   }
 }
 
-function respond(call: FunctionCall, response: Record<string, unknown>, scheduling?: FunctionResponseScheduling): void {
+function respond(call: FunctionCall, response: object): void {
   if (!call.id || cancelledToolCalls.has(call.id)) return;
-  const reply: FunctionResponse = { id: call.id, name: call.name, response };
-  if (scheduling) reply.scheduling = scheduling;
+  const reply: FunctionResponse = { id: call.id, name: call.name, response: response as Record<string, unknown> };
   session?.sendToolResponses([reply]);
 }
 
-function replaceSelection(markdown: string): Record<string, unknown> {
+function replaceSelection(markdown: string, callId?: string): Record<string, unknown> {
   const id = conversationId();
   const document = conversationById(id)?.document ?? "";
   const sel = currentSelection(document);
@@ -242,20 +243,20 @@ function replaceSelection(markdown: string): Record<string, unknown> {
     return { error: "Nothing is highlighted. Ask the user to highlight text, or use write_document." };
   }
   setDocument(id, document.slice(0, sel.start) + markdown + document.slice(sel.end));
-  appendTurn(id, { role: "edit", scope: "selection", before: sel.text, after: markdown });
+  appendTurn(id, { role: "edit", scope: "selection", before: sel.text, after: markdown, callId });
   clearSelection();
   lastSentSelection = null; // the model knows the highlight is gone; no need to tell it
-  return { result: "Replaced the highlighted text. The highlight is now cleared." };
+  return { result: SELECTION_RESULT };
 }
 
-function writeDocument(markdown: string): Record<string, unknown> {
+function writeDocument(markdown: string, callId?: string): Record<string, unknown> {
   if (!markdown.trim()) return { error: "The markdown was empty." };
   const id = conversationId();
   setDocument(id, markdown);
-  appendTurn(id, { role: "edit", scope: "document" });
+  appendTurn(id, { role: "edit", scope: "document", after: markdown, callId });
   clearSelection();
   lastSentSelection = null;
-  return { result: "Document updated." };
+  return { result: DOCUMENT_RESULT };
 }
 
 async function runExpert(call: FunctionCall, question: string): Promise<void> {
@@ -270,6 +271,10 @@ async function runExpert(call: FunctionCall, question: string): Promise<void> {
   };
   setExpertJobs(jobs => [...jobs, { ...job }]);
   const live = session;
+  // ask_expert is blocking: mute the mic until it returns, so speech can't
+  // interrupt (and cancel) the call or slip turns in before its result.
+  activeExpertCalls++;
+  live?.setInputPaused(true);
   let model = "";
   let edited = false;
 
@@ -315,22 +320,23 @@ async function runExpert(call: FunctionCall, question: string): Promise<void> {
             break;
           case "done":
             model = event.model;
-            recordUsage(id, "expert", event.usage);
+            recordUsage(id, "expert", event.model, event.usage);
             break;
         }
       }
     );
-    const turn: Turn = { role: "expert", question, model };
+    const turn: Turn = { role: "expert", question, model, callId: call.id };
     if (job.edits.length) turn.edits = [...job.edits];
     if (job.reply) turn.reply = job.reply;
     appendTurn(id, turn);
 
-    // Bring the voice model up to date without having it read anything out.
+    // Bring the voice model up to date, then return the outcome (the prompt
+    // tells it to confirm briefly rather than read the reply out).
     if (live && live === session) {
       if (edited) live.sendContext([documentContext(conversationById(id)?.document ?? "")]);
-      const outcome = { edits_made: job.edits, reply_shown_to_user: job.reply || null };
+      const outcome = expertOutcome(turn);
       if (call.id && !cancelledToolCalls.has(call.id)) {
-        respond(call, outcome, FunctionResponseScheduling.SILENT);
+        respond(call, outcome);
       } else {
         live.sendContext([`[Expert] Finished: ${JSON.stringify(outcome)}`]);
       }
@@ -341,6 +347,8 @@ async function runExpert(call: FunctionCall, question: string): Promise<void> {
     if (live && live === session) respond(call, { error: message });
   } finally {
     setExpertJobs(jobs => jobs.filter(j => j.id !== jobId));
+    activeExpertCalls--;
+    if (activeExpertCalls === 0) live?.setInputPaused(false);
   }
 }
 
@@ -363,7 +371,7 @@ export function pasteDocument(text: string): void {
   if (!markdown || !canPasteDocument()) return;
   const id = session ? conversationId() : ensureConversation().id;
   setDocument(id, markdown + "\n");
-  appendTurn(id, { role: "edit", by: "user", scope: "document" });
+  appendTurn(id, { role: "edit", by: "user", scope: "document", after: markdown + "\n" });
   const conversation = conversationById(id);
   if (conversation && !conversation.title) {
     setConversationTitle(id, titleFromUtterance(markdown.replace(/^#+\s*/, "")));
