@@ -17,7 +17,7 @@ export default defineConfig(({ command, mode }) => {
       solid({
         ssr: true,
         start: true,
-        serverFunctions: true,
+        serverFunctions: { serverSetup: "./src/serverErrors.ts" },
       }),
       // Deploy adapter. Picks the preset from the build environment: on Vercel
       // it writes .vercel/output (Build Output API).
