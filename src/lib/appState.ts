@@ -24,9 +24,10 @@ import {
   ensureConversation,
   recordUsage,
   replaceTurn,
+  editDocument,
   selectedConversation,
-  setConversationTitle,
   setDocument,
+  setTitleIfEmpty,
 } from "./store";
 import { serializeTurns, titleFromUtterance, type Turn } from "./types";
 import { liveUsage } from "./usage";
@@ -62,8 +63,8 @@ export { phase, errorMessage, notice, liveUser, liveAssistant, speaking, expertJ
 let session: LiveVoiceSession | undefined;
 /** The conversation this session writes to (created lazily on the first turn). */
 let sessionConversationId: string | null = null;
-/** Index of the user turn committed during the current model turn, for late transcripts. */
-let currentUserTurn = -1;
+/** The user turn committed during the current model turn, for late transcripts. */
+let currentUserTurn: { index: number; turn: Turn & { role: "user" } } | null = null;
 let pendingUser = "";
 let pendingAssistant = "";
 const cancelledToolCalls = new Set<string>();
@@ -125,12 +126,12 @@ async function startSession(): Promise<void> {
     onInterrupted: () => {
       commitUser();
       commitAssistant();
-      currentUserTurn = -1;
+      currentUserTurn = null;
     },
     onTurnComplete: () => {
       commitUser();
       commitAssistant();
-      currentUserTurn = -1;
+      currentUserTurn = null;
     },
     onSpeakingChange: setSpeaking,
     onUsage: (model, meta) => recordUsage(conversationId(), "voice", model, liveUsage(model, meta)),
@@ -163,7 +164,7 @@ function stopSession(): void {
 }
 
 function resetTurnState(): void {
-  currentUserTurn = -1;
+  currentUserTurn = null;
   pendingUser = "";
   pendingAssistant = "";
   cancelledToolCalls.clear();
@@ -180,10 +181,10 @@ function conversationId(): string {
 
 function handleInputTranscript(text: string): void {
   // A late fragment of an utterance we already committed this turn: extend it.
-  const conversation = currentUserTurn >= 0 ? conversationById(conversationId()) : undefined;
-  const existing = conversation?.turns[currentUserTurn];
-  if (existing?.role === "user") {
-    replaceTurn(conversation!.id, currentUserTurn, { ...existing, text: tidy(existing.text + text) });
+  if (currentUserTurn) {
+    const turn = { ...currentUserTurn.turn, text: tidy(currentUserTurn.turn.text + text) };
+    currentUserTurn = { ...currentUserTurn, turn };
+    replaceTurn(conversationId(), currentUserTurn.index, turn);
     return;
   }
   pendingUser += text;
@@ -196,11 +197,10 @@ function commitUser(): void {
   setLiveUser("");
   if (!text) return;
   const id = conversationId();
-  const conversation = conversationById(id);
-  if (conversation && !conversation.title) setConversationTitle(id, titleFromUtterance(text));
-  const sel = currentSelection(conversation?.document ?? "");
-  const turn: Turn = sel ? { role: "user", text, selection: sel.text } : { role: "user", text };
-  currentUserTurn = appendTurn(id, turn);
+  setTitleIfEmpty(id, titleFromUtterance(text));
+  const sel = currentSelection(conversationById(id)?.document ?? "");
+  const turn: Turn & { role: "user" } = sel ? { role: "user", text, selection: sel.text } : { role: "user", text };
+  currentUserTurn = { index: appendTurn(id, turn), turn };
 }
 
 function commitAssistant(): void {
@@ -237,13 +237,17 @@ function respond(call: FunctionCall, response: object): void {
 
 function replaceSelection(markdown: string, callId?: string): Record<string, unknown> {
   const id = conversationId();
-  const document = conversationById(id)?.document ?? "";
-  const sel = currentSelection(document);
-  if (!sel) {
+  let replaced = null as string | null; // assigned in the setter
+  editDocument(id, document => {
+    const sel = currentSelection(document);
+    if (!sel) return null;
+    replaced = sel.text;
+    return document.slice(0, sel.start) + markdown + document.slice(sel.end);
+  });
+  if (replaced === null) {
     return { error: "Nothing is highlighted. Ask the user to highlight text, or use write_document." };
   }
-  setDocument(id, document.slice(0, sel.start) + markdown + document.slice(sel.end));
-  appendTurn(id, { role: "edit", scope: "selection", before: sel.text, after: markdown, callId });
+  appendTurn(id, { role: "edit", scope: "selection", before: replaced, after: markdown, callId });
   clearSelection();
   lastSentSelection = null; // the model knows the highlight is gone; no need to tell it
   return { result: SELECTION_RESULT };
@@ -276,19 +280,18 @@ async function runExpert(call: FunctionCall, question: string): Promise<void> {
   activeExpertCalls++;
   live?.setInputPaused(true);
   let model = "";
-  let edited = false;
+  /** The document after the expert's latest edit (null until it edits). */
+  let edited: string | null = null;
 
-  // Edits are re-applied to the *current* document: the voice model may have
-  // changed it while the expert was thinking.
+  // Edits are applied to the *current* document (including earlier edits from
+  // this same stream chunk), validated again on the client as a safety net.
   const applyToDocument = (next: (current: string) => string | null, summary: string) => {
-    const current = conversationById(id)?.document ?? "";
-    const result = next(current);
+    const result = editDocument(id, next);
     if (result === null) {
       showNotice(`Couldn't apply an expert edit (the document changed): ${summary}`);
       return;
     }
-    setDocument(id, result);
-    edited = true;
+    edited = result;
     update({ edits: [...job.edits, summary || "Edited the document"] });
   };
 
@@ -333,7 +336,7 @@ async function runExpert(call: FunctionCall, question: string): Promise<void> {
     // Bring the voice model up to date, then return the outcome (the prompt
     // tells it to confirm briefly rather than read the reply out).
     if (live && live === session) {
-      if (edited) live.sendContext([documentContext(conversationById(id)?.document ?? "")]);
+      if (edited !== null) live.sendContext([documentContext(edited)]);
       const outcome = expertOutcome(turn);
       if (call.id && !cancelledToolCalls.has(call.id)) {
         respond(call, outcome);
@@ -372,10 +375,7 @@ export function pasteDocument(text: string): void {
   const id = session ? conversationId() : ensureConversation().id;
   setDocument(id, markdown + "\n");
   appendTurn(id, { role: "edit", by: "user", scope: "document", after: markdown + "\n" });
-  const conversation = conversationById(id);
-  if (conversation && !conversation.title) {
-    setConversationTitle(id, titleFromUtterance(markdown.replace(/^#+\s*/, "")));
-  }
+  setTitleIfEmpty(id, titleFromUtterance(markdown.replace(/^#+\s*/, "")));
   session?.sendContext([documentContext(markdown)]);
 }
 

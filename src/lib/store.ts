@@ -1,8 +1,13 @@
 // Conversations: an in-memory Solid store, loaded from Neon Postgres after
 // sign-in. Every mutation updates the store immediately and enqueues the
 // matching write (sync.ts), so the UI never waits on the database.
+//
+// Solid 2 batches writes: a read in the same tick as a write still sees the old
+// value (the flush runs on a microtask). So mutators that depend on current
+// state (setTitleIfEmpty, editDocument) read it inside the setter, where pending
+// writes are visible, rather than callers reading and then writing.
 
-import { createStore, flush } from "solid-js";
+import { createStore } from "solid-js";
 import { authToken } from "./auth";
 import { loadConversations as fetchConversations } from "./dbServer";
 import { clearQueue, enqueue } from "./sync";
@@ -18,23 +23,12 @@ interface StoreShape {
   loadError: string;
 }
 
-const [store, setStoreLazily] = createStore<StoreShape>({
+const [store, setStore] = createStore<StoreShape>({
   conversations: [],
   selectedId: null,
   status: "loading",
   loadError: "",
 });
-
-/**
- * Write, then flush. In Solid 2, store reads return the old value until the next
- * flush; appState writes and then reads back in the same tick (create a chat,
- * then title it; apply one expert edit, then the next), so make writes visible
- * immediately. Only called from event handlers, never inside a computation.
- */
-function setStore(update: (draft: StoreShape) => void): void {
-  setStoreLazily(update);
-  flush();
-}
 
 export { store };
 
@@ -167,18 +161,35 @@ export function replaceTurn(conversationId: string, index: number, turn: Turn): 
 }
 
 export function setDocument(conversationId: string, document: string): void {
-  updateConversation(conversationId, conversation => {
-    conversation.document = document;
-  });
-  enqueue({ op: "updateConversation", id: conversationId, document });
+  editDocument(conversationId, () => document);
 }
 
-export function setConversationTitle(conversationId: string, title: string): void {
+/**
+ * Derive the new document from the current one (including writes earlier in
+ * this tick). `edit` returns null to leave it unchanged. Returns the new
+ * document, or null if nothing changed.
+ */
+export function editDocument(conversationId: string, edit: (current: string) => string | null): string | null {
+  let next = null as string | null; // assigned in the setter
+  updateConversation(conversationId, conversation => {
+    next = edit(conversation.document);
+    if (next !== null) conversation.document = next;
+  });
+  if (next !== null) enqueue({ op: "updateConversation", id: conversationId, document: next });
+  return next;
+}
+
+/** Title a conversation unless it already has one. */
+export function setTitleIfEmpty(conversationId: string, title: string): void {
+  let changed = false as boolean; // assigned in the setter
   setStore(draft => {
     const conversation = draft.conversations.find(c => c.id === conversationId);
-    if (conversation) conversation.title = title;
+    if (conversation && !conversation.title) {
+      conversation.title = title;
+      changed = true;
+    }
   });
-  enqueue({ op: "updateConversation", id: conversationId, title });
+  if (changed) enqueue({ op: "updateConversation", id: conversationId, title });
 }
 
 export function recordUsage(conversationId: string, kind: "voice" | "expert", model: string, usage: UsageTotals): void {
