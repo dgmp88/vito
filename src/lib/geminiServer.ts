@@ -13,7 +13,7 @@ import { liveSessionConfig } from "./liveConfig";
 
 const LIVE_MODEL = process.env.VITO_LIVE_MODEL || "gemini-3.8-live";
 const EXPERT_MODEL = process.env.VITO_EXPERT_MODEL || "gemini-4-neon";
-const EXPERT_THINKING = (process.env.VITO_EXPERT_THINKING || "high").toUpperCase() as ThinkingLevel;
+const EXPERT_THINKING = (process.env.VITO_EXPERT_THINKING || "medium").toUpperCase() as ThinkingLevel;
 
 let client: GoogleGenAI | undefined;
 function gemini(): GoogleGenAI {
